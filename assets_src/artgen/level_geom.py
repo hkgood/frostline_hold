@@ -46,12 +46,12 @@ PLAY_BOTTOM = 412
 VIEW_WIDTH = 480
 VIEW_HEIGHT = 480
 
-SPAWN = (18, 96)
+SPAWN = (14, 146)
 GOAL = (450, 366)
 
 # Lane A: the main road entering from the north-west gate and running south.
 PATH_LANE_A = [
-    (18, 96), (18, 150), (72, 150), (72, 214), (150, 214), (150, 268),
+    (14, 146), (28, 150), (72, 150), (72, 214), (150, 214), (150, 268),
     (228, 268), (228, 320), (300, 320), (300, 366), (388, 366), GOAL,
 ]
 

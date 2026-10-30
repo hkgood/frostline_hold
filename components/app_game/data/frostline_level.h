@@ -15,7 +15,7 @@
 
 #define FL_LANE_A_POINTS 82
 #define FL_LANE_B_POINTS 34
-#define FL_MERGE_DISTANCE 461.99f
+#define FL_MERGE_DISTANCE 418.55f
 
 #define FL_BUILD_SPOT_COUNT 14
 #define FL_HERO_POST_COUNT 2
@@ -28,14 +28,14 @@
 
 /* fl_point_t comes from frostline_model.h, included above. */
 static const fl_point_t FL_LANE_A[FL_LANE_A_POINTS] = {
-    {18, 96},
-    {18, 134},
-    {18, 138},
-    {19, 141},
-    {20, 144},
-    {23, 147},
-    {26, 148},
-    {29, 149},
+    {14, 146},
+    {21, 148},
+    {23, 148},
+    {25, 149},
+    {27, 149},
+    {28, 149},
+    {30, 149},
+    {32, 149},
     {34, 150},
     {56, 150},
     {60, 150},
@@ -150,7 +150,7 @@ static const fl_point_t FL_LANE_B[FL_LANE_B_POINTS] = {
 };
 
 static const fl_point_t FL_GOAL = {450, 366};
-static const fl_point_t FL_SPAWN = {18, 96};
+static const fl_point_t FL_SPAWN = {14, 146};
 
 static const fl_point_t FL_BUILD_SPOTS[FL_BUILD_SPOT_COUNT] = {
     {58, 108},

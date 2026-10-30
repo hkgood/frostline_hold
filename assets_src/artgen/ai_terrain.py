@@ -35,65 +35,6 @@ def _threshold(source, size=480):
     return canvas
 
 
-def clear_corridor(canvas, points, radius, margin, rng):
-    """Erase the artwork along the route with a stippled fade at the edge."""
-    for y in range(max(0, int(min(p[1] for p in points) - radius - margin)),
-                   min(canvas.height, int(max(p[1] for p in points) + radius + margin) + 1)):
-        for x in range(max(0, int(min(p[0] for p in points) - radius - margin)),
-                       min(canvas.width, int(max(p[0] for p in points) + radius + margin) + 1)):
-            distance = geom.distance_to_paths(x, y)
-            if distance <= radius:
-                canvas.set(x, y, WHITE)
-            elif distance <= radius + margin:
-                fade = (radius + margin - distance) / float(margin)
-                if rng.random() < fade * fade * 1.15:
-                    canvas.set(x, y, WHITE)
-
-
-def draw_road(canvas, points, width, rng):
-    """A packed snow road: bright body, soft shoulder, thin contour."""
-    canvas.polyline(points, width + 2, WHITE)
-
-    # Soft, broken shoulder that fades into the snow.
-    for index in range(len(points) - 1):
-        x0, y0 = points[index]
-        x1, y1 = points[index + 1]
-        length = int(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5)
-        if length <= 0:
-            continue
-        dx = (x1 - x0) / float(length)
-        dy = (y1 - y0) / float(length)
-        nx, ny = -dy, dx
-        for step in range(3, length - 3, 6):
-            px = x0 + dx * step
-            py = y0 + dy * step
-            for side in (-1, 1):
-                if rng.random() < 0.45:
-                    continue
-                ox = px + nx * side * (width / 2 + 1)
-                oy = py + ny * side * (width / 2 + 1)
-                canvas.set(int(ox), int(oy), BLACK)
-                canvas.set(int(ox + dx), int(oy + dy), BLACK)
-
-    # Sparse wheel marks, kept faint so the road does not read as a diagram.
-    for index in range(len(points) - 1):
-        x0, y0 = points[index]
-        x1, y1 = points[index + 1]
-        length = int(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5)
-        if length <= 0:
-            continue
-        dx = (x1 - x0) / float(length)
-        dy = (y1 - y0) / float(length)
-        nx, ny = -dy, dx
-        for step in range(4, length - 4, 13):
-            px = x0 + dx * step
-            py = y0 + dy * step
-            if rng.random() < 0.45:
-                continue
-            side = 1 if rng.random() < 0.5 else -1
-            canvas.set(int(px + nx * side * 3), int(py + ny * side * 3), BLACK)
-
-
 def draw_gatehouse(canvas):
     """The goal: a curtain wall with two towers and a lit gate mouth."""
     gx, gy = geom.GOAL
@@ -133,6 +74,51 @@ def clear_disc(canvas, cx, cy, radius, margin, rng):
                     canvas.set(x, y, WHITE)
 
 
+def _dark_ratio(canvas, cx, cy, radius):
+    """How much of the neighbourhood is ink; 1.0 means solid black."""
+    dark = 0
+    total = 0
+    for y in range(max(0, cy - radius), min(canvas.height, cy + radius + 1)):
+        for x in range(max(0, cx - radius), min(canvas.width, cx + radius + 1)):
+            total += 1
+            if canvas.get(x, y) == 0:
+                dark += 1
+    return (dark / float(total)) if total else 0.0
+
+
+def clear_dark_track(canvas, points, radius, rng, jitter=1.2):
+    """Open a trail only where the lane runs through ink.
+
+    The engraving already draws the road as a pale band with a dark edge.
+    Clearing that band would throw the drawing away, so the trail is cut
+    only where the ground is genuinely black - the forest at the entrance,
+    for instance - which is exactly where a black enemy would disappear.
+    """
+    for index in range(len(points) - 1):
+        x0, y0 = points[index]
+        x1, y1 = points[index + 1]
+        steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+        for step in range(steps + 1):
+            t = step / float(steps)
+            cx = int(x0 + (x1 - x0) * t)
+            cy = int(y0 + (y1 - y0) * t)
+            if _dark_ratio(canvas, cx, cy, 9) < 0.45:
+                continue
+            ox = rng.uniform(-jitter, jitter)
+            oy = rng.uniform(-jitter, jitter)
+            for dy in range(-radius - 2, radius + 3):
+                for dx in range(-radius - 2, radius + 3):
+                    distance = (dx * dx + dy * dy) ** 0.5
+                    px, py = int(cx + ox) + dx, int(cy + oy) + dy
+                    if not (0 <= px < canvas.width and 0 <= py < canvas.height):
+                        continue
+                    if distance <= radius:
+                        canvas.set(px, py, WHITE)
+                    elif distance <= radius + 2:
+                        if rng.random() < 0.6:
+                            canvas.set(px, py, WHITE)
+
+
 def build_background():
     """The AI engraving already contains the road, so nothing is drawn over it.
 
@@ -142,6 +128,10 @@ def build_background():
     """
     rng = random.Random(0xF1E1D)
     canvas = _threshold(AI_SOURCE)
+
+    # The lanes decide where the enemies walk, so the trail follows them.
+    clear_dark_track(canvas, geom.PATH_LANE_A_ROUTE, 9, rng)
+    clear_dark_track(canvas, geom.PATH_LANE_B_ROUTE, 9, rng)
 
     # Clearings so every build pad reads as open ground.
     for x, y in geom.BUILD_SPOTS:
