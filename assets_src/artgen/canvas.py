@@ -81,6 +81,7 @@ class Canvas:
         self.fill_rect(x, y, 1, h, value)
 
     def line(self, x0, y0, x1, y1, value):
+        x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
         dx, dy = abs(x1 - x0), -abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
         sy = 1 if y0 < y1 else -1
@@ -98,6 +99,7 @@ class Canvas:
                 y0 += sy
 
     def disc(self, cx, cy, r, value):
+        cx, cy, r = int(cx), int(cy), int(r)
         if r <= 0:
             self.set(cx, cy, value)
             return
@@ -107,23 +109,87 @@ class Canvas:
                     self.set(col, row, value)
 
     def ellipse(self, cx, cy, rx, ry, value):
+        cx, cy = int(cx), int(cy)
+        rx, ry = float(rx), float(ry)
         if rx <= 0 or ry <= 0:
             self.set(cx, cy, value)
             return
-        for row in range(cy - ry, cy + ry + 1):
-            for col in range(cx - rx, cx + rx + 1):
+        for row in range(cy - int(ry), cy + int(ry) + 1):
+            for col in range(cx - int(rx), cx + int(rx) + 1):
                 if ((col - cx) / rx) ** 2 + ((row - cy) / ry) ** 2 <= 1.0:
                     self.set(col, row, value)
 
+    def triangle(self, x0, y0, x1, y1, x2, y2, value):
+        """Filled triangle using the sign test on each edge."""
+        x0, y0, x1, y1, x2, y2 = int(x0), int(y0), int(x1), int(y1), int(x2), int(y2)
+        min_x = max(0, int(min(x0, x1, x2)))
+        max_x = min(self.width - 1, int(max(x0, x1, x2)))
+        min_y = max(0, int(min(y0, y1, y2)))
+        max_y = min(self.height - 1, int(max(y0, y1, y2)))
+
+        def edge(ax, ay, bx, by, cx, cy):
+            return (ax - cx) * (by - cy) - (bx - cx) * (ay - cy)
+
+        for row in range(min_y, max_y + 1):
+            for col in range(min_x, max_x + 1):
+                d1 = edge(col, row, x0, y0, x1, y1)
+                d2 = edge(col, row, x1, y1, x2, y2)
+                d3 = edge(col, row, x2, y2, x0, y0)
+                has_neg = d1 < 0 or d2 < 0 or d3 < 0
+                has_pos = d1 > 0 or d2 > 0 or d3 > 0
+                if not (has_neg and has_pos):
+                    self.set(col, row, value)
+
+    def rotated_ellipse(self, cx, cy, rx, ry, angle_deg, value):
+        """Ellipse rotated about its centre."""
+        import math
+        radians = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(radians), math.sin(radians)
+        bound = int(max(rx, ry)) + 1
+        for row in range(cy - bound, cy + bound + 1):
+            for col in range(cx - bound, cx + bound + 1):
+                dx, dy = col - cx, row - cy
+                lx = dx * cos_a + dy * sin_a
+                ly = -dx * sin_a + dy * cos_a
+                if (lx / rx) ** 2 + (ly / ry) ** 2 <= 1.0:
+                    self.set(col, row, value)
+
+    def polygon(self, points, value):
+        """Filled convex polygon given as a list of (x, y) vertices."""
+        if len(points) < 3:
+            return
+        for index in range(1, len(points) - 1):
+            ax, ay = points[0]
+            bx, by = points[index]
+            cx, cy = points[index + 1]
+            self.triangle(ax, ay, bx, by, cx, cy, value)
+
+    def quad(self, x0, y0, x1, y1, x2, y2, x3, y3, value):
+        """Filled quadrilateral, split into two triangles."""
+        self.triangle(x0, y0, x1, y1, x2, y2, value)
+        self.triangle(x0, y0, x2, y2, x3, y3, value)
+
+    def thick_line(self, x0, y0, x1, y1, width, value):
+        """Line of the given pixel width: a quad plus round end caps."""
+        x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+        half = width / 2.0
+        dx, dy = x1 - x0, y1 - y0
+        length = (dx * dx + dy * dy) ** 0.5
+        if length == 0.0:
+            self.disc(x0, y0, int(half), value)
+            return
+        nx, ny = -dy / length * half, dx / length * half
+        self.quad(x0 + nx, y0 + ny, x1 + nx, y1 + ny,
+                  x1 - nx, y1 - ny, x0 - nx, y0 - ny, value)
+        self.disc(x0, y0, int(half), value)
+        self.disc(x1, y1, int(half), value)
+
     def polyline(self, points, width, value):
-        """Thick polyline: one line per segment plus a disc at every joint."""
-        half = max(0, width // 2)
+        """Thick polyline: every segment is drawn with the requested width."""
         for index in range(len(points) - 1):
             x0, y0 = points[index]
             x1, y1 = points[index + 1]
-            self.line(x0, y0, x1, y1, value)
-        for px, py in points:
-            self.disc(px, py, half, value)
+            self.thick_line(x0, y0, x1, y1, width, value)
 
     def blit(self, other, x, y):
         """Copy another canvas over this one; unset pixels do not overwrite."""
@@ -170,6 +236,38 @@ def dither_disc(canvas, cx, cy, r, density, offset=(0, 0)):
     for row in range(cy - r, cy + r + 1):
         for col in range(cx - r, cx + r + 1):
             if (col - cx) ** 2 + (row - cy) ** 2 > r * r:
+                continue
+            if dither_value(col, row, offset) < limit:
+                canvas.set(col, row, BLACK)
+
+
+def point_in_polygon(px, py, points):
+    """Even-odd ray casting test."""
+    inside = False
+    j = len(points) - 1
+    for i in range(len(points)):
+        xi, yi = points[i]
+        xj, yj = points[j]
+        if (yi > py) != (yj > py):
+            crossing = (xj - xi) * (py - yi) / (yj - yi) + xi
+            if px < crossing:
+                inside = not inside
+        j = i
+    return inside
+
+
+def dither_polygon(canvas, points, density, offset=(0, 0)):
+    """Fill an irregular polygon with ordered dithering.
+
+    Polygons keep a hard edge, which is what separates a tilled field from a
+    soft circle of dots.
+    """
+    limit = density * 64.0
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    for row in range(int(min(ys)), int(max(ys)) + 1):
+        for col in range(int(min(xs)), int(max(xs)) + 1):
+            if not point_in_polygon(col, row, points):
                 continue
             if dither_value(col, row, offset) < limit:
                 canvas.set(col, row, BLACK)
