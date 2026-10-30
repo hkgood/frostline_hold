@@ -48,3 +48,7 @@ __pycache__/
 Thumbs.db
 
 # Keep sdkconfig*.defaults, idf_component.yml and source assets versioned.
+
+# python bytecode
+__pycache__/
+*.pyc
