@@ -18,6 +18,7 @@ extern "C" {
 #define FL_MAX_TOWERS 32
 #define FL_MAX_ENEMIES 96
 #define FL_MAX_PROJECTILES 128
+#define FL_MAX_HEROES 2
 
 /* Screen layout. The map covers the whole panel; the HUD and build bar are
  * drawn on top of it. */
@@ -31,6 +32,12 @@ extern "C" {
 #define FL_TOWER_CARD_H 56
 #define FL_TOWER_CARD_Y (FL_BAR_TOP + 6)
 #define FL_TOWER_CARD_GAP 102
+#define FL_HERO_CARD_X (8 + 3 * FL_TOWER_CARD_GAP)
+/* The hero's frost nova button sits at the far left of the bar. */
+#define FL_SKILL_BTN_X 4
+#define FL_SKILL_BTN_Y 6
+#define FL_SKILL_BTN_W 32
+#define FL_SKILL_BTN_H 32
 #define FL_SPEED_BTN_X 428
 #define FL_SPEED_BTN_W 44
 #define FL_PAUSE_BTN_X 382
@@ -56,6 +63,10 @@ typedef enum {
     FL_TOWER_FROST = 2,
     FL_TOWER_SIEGE = 3,
 } fl_tower_kind_t;
+
+typedef enum {
+    FL_HERO_WARDEN = 0,
+} fl_hero_kind_t;
 
 typedef enum {
     FL_ENEMY_WOLF = 0,
@@ -86,6 +97,19 @@ typedef struct {
     int16_t x, y;
 } fl_point_t;
 
+/* A hero stands at a post and holds the road. */
+typedef struct {
+    fl_hero_kind_t kind;
+    int16_t x, y;
+    uint16_t hp;
+    uint16_t max_hp;
+    uint16_t cooldown;      /* ticks until the next shot */
+    uint16_t skill_timer;   /* ticks until the skill is ready again */
+    uint16_t respawn_timer; /* ticks until the hero comes back */
+    uint8_t active;         /* a hero has been placed here */
+    uint8_t alive;
+} fl_hero_t;
+
 typedef struct {
     fl_tower_kind_t kind;
     int16_t x, y;
@@ -111,6 +135,7 @@ typedef struct {
     uint16_t burn_damage;/* damage per second while burning */
     uint16_t stun_ticks; /* remaining stun */
     uint16_t cast_timer; /* ticks until the next heal or banner pulse */
+    uint16_t attack_timer; /* ticks until the next hit on a hero */
     uint16_t buff_ticks; /* how long the banner's hardening lasts */
     int16_t armor_bonus; /* armour granted by a banner */
     uint8_t behaviour;   /* FL_BEHAVIOUR_* */
@@ -138,6 +163,8 @@ typedef struct {
     uint32_t score_kills; /* points earned by killing enemies */
     uint32_t score_waves; /* points earned by clearing waves */
     uint32_t score_bonus; /* end-of-run bonuses: remaining lives, no leaks */
+    uint32_t best_score;  /* the best run stored on this device */
+    uint8_t best_stars;   /* the stars that run earned */
     uint16_t leaks;       /* enemies that reached the gate */
     uint8_t wave;          /* 1-based; FL_WAVE_COUNT + 1 means finished */
     uint8_t phase;
@@ -148,6 +175,8 @@ typedef struct {
     uint32_t seed;
     uint32_t kills;
     uint32_t prep_ticks;   /* ticks left in the preparation phase */
+    fl_hero_t heroes[FL_MAX_HEROES];
+    uint8_t selected_hero;  /* hero kind armed in the build bar, 0xFF none */
     uint8_t batch_index;   /* index into the current wave's batch list */
     uint8_t batch_spawned; /* enemies already spawned from that batch */
     uint8_t spawn_timer;
@@ -207,6 +236,12 @@ int fl_tower_option(const fl_tower_t *tower, int stage);
 bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kind);
 /** Sell the tower at the given index and refund half of what was spent. */
 bool fl_sell_tower(fl_state_t *state, int index);
+/** Put a hero on the nearest free hero post. */
+bool fl_build_hero(fl_state_t *state, int16_t x, int16_t y, fl_hero_kind_t kind);
+/** Cast the hero's frost nova around it. */
+bool fl_cast_hero_skill(fl_state_t *state, int index);
+/** The stars this run earned: three, two or one. */
+int fl_star_rating(const fl_state_t *state);
 
 /* --- introspection --------------------------------------------------- */
 uint32_t fl_state_hash(const fl_state_t *state);

@@ -21,6 +21,7 @@
 #define FL_BANNER_ARMOR 10    /* armour the banner grants */
 #define FL_BANNER_TICKS 120   /* how long the banner's gift lasts */
 #define FL_SAP_LIVES 3        /* lives a sap takes out of the gate */
+#define FL_HERO_HIT_DAMAGE 6  /* what one enemy strike costs the hero */
 #define FL_SELL_PERCENT 50
 
 /* ------------------------------------------------------------------ */
@@ -463,6 +464,83 @@ static void fl_banner_allies(fl_state_t *state, fl_enemy_t *caster)
     }
 }
 
+/* The hero that an enemy has to walk past, if any. */
+static int fl_hero_in_the_way(const fl_state_t *state, float x, float y)
+{
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        const fl_hero_t *hero = &state->heroes[i];
+        if (!hero->active || !hero->alive) {
+            continue;
+        }
+        float dx = x - (float)hero->x;
+        float dy = y - (float)hero->y;
+        if (dx * dx + dy * dy <= (float)FL_HERO_BLOCK_RADIUS * FL_HERO_BLOCK_RADIUS) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The hero shoots at the enemy closest to the gate. */
+static void fl_update_heroes(fl_state_t *state)
+{
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        fl_hero_t *hero = &state->heroes[i];
+        if (!hero->active) {
+            continue;
+        }
+        if (!hero->alive) {
+            if (hero->respawn_timer > 0) {
+                hero->respawn_timer--;
+                if (hero->respawn_timer == 0) {
+                    hero->alive = 1;
+                    hero->hp = hero->max_hp;
+                    hero->cooldown = 0;
+                }
+            }
+            continue;
+        }
+        if (hero->skill_timer > 0) {
+            hero->skill_timer--;
+        }
+        if (hero->cooldown > 0) {
+            hero->cooldown--;
+            continue;
+        }
+        const fl_hero_stat_t *stat = &FL_HERO_STATS[hero->kind];
+        int best = -1;
+        float best_dist = -1.0f;
+        float range2 = (float)stat->range * (float)stat->range;
+        for (int e = 0; e < FL_MAX_ENEMIES; ++e) {
+            const fl_enemy_t *enemy = &state->enemies[e];
+            if (!enemy->alive) {
+                continue;
+            }
+            float dx = enemy->x - (float)hero->x;
+            float dy = enemy->y - (float)hero->y;
+            if (dx * dx + dy * dy > range2) {
+                continue;
+            }
+            if (best < 0 || enemy->dist > best_dist) {
+                best = e;
+                best_dist = enemy->dist;
+            }
+        }
+        if (best < 0) {
+            continue;
+        }
+        fl_enemy_t *enemy = &state->enemies[best];
+        fl_shot_t shot;
+        shot.damage = stat->damage;
+        shot.aoe = 0;
+        shot.flags = 0;
+        shot.slow = false;
+        shot.slow_percent = FL_SLOW_PERCENT;
+        fl_damage_enemy(state, enemy, &shot);
+        hero->cooldown = stat->cooldown;
+    }
+}
+
 static void fl_update_enemies(fl_state_t *state)
 {
     for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
@@ -511,6 +589,26 @@ static void fl_update_enemies(fl_state_t *state)
             }
         }
         if (enemy->stun_ticks > 0) {
+            continue;
+        }
+        /* A hero standing in the road has to be dealt with first. */
+        int blocker = fl_hero_in_the_way(state, enemy->x, enemy->y);
+        if (blocker >= 0) {
+            fl_hero_t *hero = &state->heroes[blocker];
+            if (enemy->attack_timer > 0) {
+                enemy->attack_timer--;
+            }
+            if (enemy->attack_timer == 0) {
+                enemy->attack_timer = 20;
+                if (hero->hp > FL_HERO_HIT_DAMAGE) {
+                    hero->hp = (uint16_t)(hero->hp - FL_HERO_HIT_DAMAGE);
+                } else {
+                    hero->hp = 0;
+                    hero->alive = 0;
+                    hero->respawn_timer =
+                        FL_HERO_STATS[hero->kind].respawn_ticks;
+                }
+            }
             continue;
         }
         float speed = (float)FL_ENEMY_STATS[enemy->kind].speed;
@@ -607,6 +705,7 @@ static void fl_step(fl_state_t *state)
         return;
     }
     fl_update_spawning(state);
+    fl_update_heroes(state);
     fl_update_towers(state);
     fl_update_projectiles(state);
     fl_update_enemies(state);
@@ -765,6 +864,7 @@ void fl_state_reset(fl_state_t *state, uint32_t seed)
     state->phase = FL_PHASE_PREP;
     state->speed = 1;
     state->selected_kind = FL_TOWER_NONE;
+    state->selected_hero = 0xFF;
     state->selected_tower = -1;
     state->prep_ticks = FL_FIRST_PREP_TICKS;
     state->seed = seed ? seed : 0x464C5354u;
@@ -835,6 +935,98 @@ bool fl_sell_tower(fl_state_t *state, int index)
     return true;
 }
 
+bool fl_build_hero(fl_state_t *state, int16_t x, int16_t y, fl_hero_kind_t kind)
+{
+    if (kind < 0 || kind >= FL_HERO_KIND_COUNT) {
+        return false;
+    }
+    const fl_hero_stat_t *stat = &FL_HERO_STATS[kind];
+    if (state->gold < stat->cost) {
+        return false;
+    }
+    /* The nearest free post takes the hero. */
+    int post = -1;
+    float best = 0.0f;
+    for (int i = 0; i < FL_HERO_POST_COUNT; ++i) {
+        if (state->heroes[i].active) {
+            continue;
+        }
+        float dx = (float)x - (float)FL_HERO_POSTS[i].x;
+        float dy = (float)y - (float)FL_HERO_POSTS[i].y;
+        float distance = dx * dx + dy * dy;
+        if (post >= 0 && distance >= best) {
+            continue;
+        }
+        best = distance;
+        post = i;
+    }
+    if (post < 0) {
+        return false;
+    }
+    fl_hero_t *hero = &state->heroes[post];
+    hero->kind = kind;
+    hero->x = FL_HERO_POSTS[post].x;
+    hero->y = FL_HERO_POSTS[post].y;
+    hero->max_hp = (uint16_t)stat->hp;
+    hero->hp = hero->max_hp;
+    hero->cooldown = 0;
+    hero->skill_timer = 0;
+    hero->respawn_timer = 0;
+    hero->active = 1;
+    hero->alive = 1;
+    state->gold = (uint16_t)(state->gold - stat->cost);
+    return true;
+}
+
+bool fl_cast_hero_skill(fl_state_t *state, int index)
+{
+    if (!state || index < 0 || index >= FL_MAX_HEROES) {
+        return false;
+    }
+    fl_hero_t *hero = &state->heroes[index];
+    if (!hero->active || !hero->alive || hero->skill_timer > 0) {
+        return false;
+    }
+    const fl_hero_stat_t *stat = &FL_HERO_STATS[hero->kind];
+    float radius2 = (float)stat->skill_radius * (float)stat->skill_radius;
+    fl_shot_t shot;
+    shot.damage = stat->skill_damage;
+    shot.aoe = 0;
+    shot.flags = 0;
+    shot.slow = true;
+    shot.slow_percent = FL_SLOW_PERCENT;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        fl_enemy_t *enemy = &state->enemies[i];
+        if (!enemy->alive) {
+            continue;
+        }
+        float dx = enemy->x - (float)hero->x;
+        float dy = enemy->y - (float)hero->y;
+        if (dx * dx + dy * dy > radius2) {
+            continue;
+        }
+        fl_damage_enemy(state, enemy, &shot);
+        enemy->slow_ticks = stat->skill_slow_ticks;
+        enemy->slow_percent = FL_SLOW_PERCENT;
+    }
+    hero->skill_timer = stat->skill_cooldown;
+    return true;
+}
+
+int fl_star_rating(const fl_state_t *state)
+{
+    if (!state || state->phase != FL_PHASE_WON) {
+        return 0;
+    }
+    if (state->lives >= 15) {
+        return 3;
+    }
+    if (state->lives >= 8) {
+        return 2;
+    }
+    return 1;
+}
+
 void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
 {
     bool pressed = down && !state->pointer_down_prev;
@@ -851,6 +1043,16 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
     }
 
     if (y < FL_HUD_HEIGHT) {
+        if (x >= FL_SKILL_BTN_X && x < FL_SKILL_BTN_X + FL_SKILL_BTN_W
+                && y >= FL_SKILL_BTN_Y && y < FL_SKILL_BTN_Y + FL_SKILL_BTN_H) {
+            for (int i = 0; i < FL_MAX_HEROES; ++i) {
+                if (state->heroes[i].active && state->heroes[i].alive) {
+                    fl_cast_hero_skill(state, i);
+                    break;
+                }
+            }
+            return;
+        }
         if (x >= FL_SPEED_BTN_X && x < FL_SPEED_BTN_X + FL_SPEED_BTN_W
                 && y >= FL_BTN_Y && y < FL_BTN_Y + FL_BTN_H) {
             fl_toggle_speed(state);
@@ -892,8 +1094,15 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
                     && y >= FL_TOWER_CARD_Y && y < FL_TOWER_CARD_Y + FL_TOWER_CARD_H) {
                 state->selected_kind = (uint8_t)(FL_TOWER_GUARD + i);
                 state->selected_tower = -1;
+                state->selected_hero = 0xFF;
                 return;
             }
+        }
+        if (x >= FL_HERO_CARD_X && x < FL_HERO_CARD_X + FL_TOWER_CARD_W
+                && y >= FL_TOWER_CARD_Y && y < FL_TOWER_CARD_Y + FL_TOWER_CARD_H) {
+            state->selected_hero = (uint8_t)FL_HERO_WARDEN;
+            state->selected_kind = FL_TOWER_NONE;
+            state->selected_tower = -1;
         }
         return;
     }
@@ -913,6 +1122,11 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
         }
     }
 
+    if (state->selected_hero != 0xFF) {
+        fl_build_hero(state, (int16_t)x, (int16_t)y,
+                      (fl_hero_kind_t)state->selected_hero);
+        return;
+    }
     if (state->selected_kind != FL_TOWER_NONE) {
         fl_build_tower(state, (int16_t)x, (int16_t)y,
                        (fl_tower_kind_t)state->selected_kind);
@@ -947,6 +1161,13 @@ uint32_t fl_state_hash(const fl_state_t *state)
     FL_MIX(state->score_waves);
     FL_MIX(state->score_bonus);
     FL_MIX(state->leaks);
+    FL_MIX(state->selected_hero);
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        FL_MIX(state->heroes[i].active);
+        FL_MIX(state->heroes[i].alive);
+        FL_MIX(state->heroes[i].hp);
+        FL_MIX(state->heroes[i].skill_timer);
+    }
     FL_MIX(state->wave);
     FL_MIX(state->phase);
     FL_MIX(state->kills);

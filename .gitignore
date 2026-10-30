@@ -52,3 +52,6 @@ Thumbs.db
 # python bytecode
 __pycache__/
 *.pyc
+
+# the player's best run, kept on the device
+frostline_record.bin

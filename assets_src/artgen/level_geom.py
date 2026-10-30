@@ -75,7 +75,22 @@ BUILD_SPOTS = [
     (432, 244), (418, 122),
 ]
 
-HERO_POSTS = [(96, 300), (376, 214)]
+# Where a hero may stand. Both are hard against the road, so the traffic
+# has to walk past the hero and fight it.
+HERO_POSTS = [(56, 232), (212, 300)]
+
+# The hero roster.
+# (kind, name, hp, damage, range, cooldown, cost, skill damage, skill radius,
+#  skill slow ticks, skill cooldown, respawn ticks)
+HERO_WARDEN = 0
+
+HERO_STATS = [
+    (HERO_WARDEN, "warden", 220, 16, 95, 20, 150,
+     45, 130, 90, 1200, 600),
+]
+
+# How close an enemy has to come before it stops and fights the hero.
+HERO_BLOCK_RADIUS = 34
 
 # Enemy roster.
 # (kind, name, hp, armor, speed px/s, bounty, score, behaviour, size)

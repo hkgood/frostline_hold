@@ -44,6 +44,12 @@
     },
     {
       "name": "icon_score"
+    },
+    {
+      "name": "icon_nova"
+    },
+    {
+      "name": "icon_star"
     }
   ],
   "animations": [

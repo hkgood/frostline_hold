@@ -15,12 +15,14 @@ from artgen.canvas import (BLACK, WHITE, Canvas, fill_polygon, hatch_polygon,
 
 UNIT_CELL = 48
 PROP_CELL = 32
+HERO_CELL = 40
 HUSK_CELL = 40
 TITAN_CELL = 64
 FX_CELL = 16
 
 UNIT_ATLAS_CELL = UNIT_CELL + 4
 PROP_ATLAS_CELL = PROP_CELL + 4
+HERO_ATLAS_CELL = HERO_CELL + 4
 HUSK_ATLAS_CELL = HUSK_CELL + 4
 TITAN_ATLAS_CELL = TITAN_CELL + 4
 FX_ATLAS_CELL = FX_CELL + 4
@@ -482,6 +484,48 @@ def _enemy_titan(frame):
     return c
 
 
+def _hero_warden(frame):
+    """The frost warden: a shield bearer who holds the road."""
+    c = _canvas(40)
+    bob = (0, -1, 0, 1)[frame % 4]
+    base = 37 + bob
+    stride = (2, 0, -2, 0)[frame % 4]
+
+    # Legs.
+    for x, extra in ((12, 0), (17, stride), (24, -stride), (28, 0)):
+        c.fill_rect(x, base - 11, 5, 11, BLACK)
+        c.fill_rect(x - 1 + extra // 2, base, 7, 3, BLACK)
+        c.fill_rect(x + 1, base - 10, 1, 9, WHITE)
+
+    # Cloak and torso.
+    fill_polygon(c, [(9, base - 4), (11, base - 22), (15, base - 28),
+                     (26, base - 28), (30, base - 22), (31, base - 4)], BLACK)
+    c.line(16, base - 26, 15, base - 6, WHITE)
+    c.line(22, base - 26, 23, base - 6, WHITE)
+    c.fill_rect(14, base - 16, 13, 2, WHITE)
+
+    # A big shield on the near arm.
+    fill_polygon(c, [(1, base - 26), (11, base - 28), (11, base - 8),
+                     (1, base - 6)], BLACK)
+    c.line(3, base - 22, 9, base - 23, WHITE)
+    c.line(3, base - 17, 9, base - 18, WHITE)
+    c.fill_rect(5, base - 20, 2, 7, WHITE)
+
+    # Hooded head with a lit face.
+    fill_polygon(c, [(16, base - 28), (18, base - 36), (25, base - 36),
+                     (27, base - 28)], BLACK)
+    fill_polygon(c, [(19, base - 31), (20, base - 34), (24, base - 34),
+                     (24, base - 31)], WHITE)
+    c.fill_rect(21, base - 33, 1, 1, BLACK)
+
+    # The maul, raised.
+    c.fill_rect(33, base - 34, 3, 26, BLACK)
+    c.fill_rect(34, base - 32, 1, 20, WHITE)
+    c.fill_rect(29, base - 38, 11, 7, BLACK)
+    c.fill_rect(31, base - 36, 7, 1, WHITE)
+    return c
+
+
 def _build_pad(frame):
     """Build spot: a stone disc with a breathing cross."""
     c = _canvas(PROP_CELL)
@@ -549,6 +593,30 @@ def _icon_score():
     c.fill_rect(3, 10, 2, 3, WHITE)
     c.fill_rect(7, 7, 2, 6, WHITE)
     c.fill_rect(11, 3, 2, 10, WHITE)
+    return c
+
+
+def _icon_star():
+    """Star glyph for the end panel rating."""
+    c = _canvas(FX_CELL)
+    points = [(8, 1), (10, 6), (15, 6), (11, 9), (13, 14),
+              (8, 11), (3, 14), (5, 9), (1, 6), (6, 6)]
+    fill_polygon(c, points, BLACK)
+    return c
+
+
+def _icon_nova():
+    """Frost nova glyph: a burst of shards around a core."""
+    c = _canvas(FX_CELL)
+    c.disc(8, 8, 3, BLACK)
+    c.disc(8, 8, 1, WHITE)
+    import math
+    for angle in range(0, 360, 45):
+        x = 8 + int(math.cos(math.radians(angle)) * 6)
+        y = 8 + int(math.sin(math.radians(angle)) * 6)
+        c.set(x, y, BLACK)
+        c.set(8 + int(math.cos(math.radians(angle)) * 7),
+              8 + int(math.sin(math.radians(angle)) * 7), BLACK)
     return c
 
 
@@ -637,6 +705,15 @@ def build_props_titan():
     return _build_grid(TITAN_CELL, entries, columns=4)
 
 
+def build_heroes():
+    """The hero sheet, on its own 40 pixel grid."""
+    entries = [("hero_warden_0", _hero_warden(0)),
+               ("hero_warden_1", _hero_warden(1)),
+               ("hero_warden_2", _hero_warden(2)),
+               ("hero_warden_3", _hero_warden(3))]
+    return _build_grid(HERO_CELL, entries, columns=4)
+
+
 def build_fx():
     entries = []
     for frame in range(3):
@@ -647,6 +724,8 @@ def build_fx():
     entries.append(("icon_coin", _icon_coin()))
     entries.append(("icon_flag", _icon_flag()))
     entries.append(("icon_score", _icon_score()))
+    entries.append(("icon_nova", _icon_nova()))
+    entries.append(("icon_star", _icon_star()))
     return _build_grid(FX_CELL, entries)
 
 

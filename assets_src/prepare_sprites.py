@@ -67,6 +67,10 @@ def main():
            frames, "binary", sprites.TITAN_ATLAS_CELL,
            sprites.TITAN_ANIMATIONS, columns=4)
 
+    canvas, frames = sprites.build_heroes()
+    _write("heroes_atlas_source.png", "atlas_heroes.json", canvas, frames,
+           "binary", sprites.HERO_ATLAS_CELL, [], columns=4)
+
     canvas, frames = sprites.build_fx()
     _write("fx_atlas_source.png", "atlas_fx.json", canvas, frames,
            "binary", sprites.FX_ATLAS_CELL, sprites.FX_ANIMATIONS)

@@ -5,6 +5,7 @@
  * the model's public header so these translation units work on both targets. */
 #include "../app_game/include/app_game.h"
 #include "include/frostline_view.h"
+#include "include/frostline_record.h"
 #include "private/game_config.h"
 #include "raylib_lite_raylib.h"
 #if !defined(RAYLIB_LITE_GAME_NATIVE)
@@ -13,6 +14,8 @@
 
 typedef struct {
     app_game_handle_t game;
+    frostline_record_t record;
+    bool recorded;   /* the finished run has already been written down */
 } host_state_t;
 
 static int initialize(void *value, const char *asset_root)
@@ -21,6 +24,9 @@ static int initialize(void *value, const char *asset_root)
 #if !defined(RAYLIB_LITE_GAME_NATIVE)
     /* The Host serves the packed atlases from the generated asset folder. */
     raylib_lite_host_assets_set_root(asset_root);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/frostline_record.bin", asset_root);
+    frostline_record_set_host_path(path);
 #else
     (void)asset_root;
 #endif
@@ -32,6 +38,7 @@ static int initialize(void *value, const char *asset_root)
     if (!frostline_view_ready()) {
         return -1;
     }
+    frostline_record_load(&state->record);
     InitWindow(GAME_WIDTH, GAME_HEIGHT, GAME_NAME);
     SetTargetFPS(GAME_TICK_HZ);
     return 0;
@@ -56,12 +63,16 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
         switch (event->code) {
         case RAYLIB_LITE_GAME_CONTROL_PAUSE: app_game_set_paused(state->game, true); break;
         case RAYLIB_LITE_GAME_CONTROL_RESUME: app_game_set_paused(state->game, false); break;
-        case RAYLIB_LITE_GAME_CONTROL_RESET: app_game_reset(state->game); break;
+        case RAYLIB_LITE_GAME_CONTROL_RESET:
+            app_game_reset(state->game);
+            state->recorded = false;
+            break;
         default: break;
         }
     } else if (event->type == RAYLIB_LITE_GAME_INPUT_ACTION && event->pressed) {
         if (event->code == GAME_ACTION_RESET) {
             app_game_reset(state->game);
+            state->recorded = false;
         }
         if (event->code == GAME_ACTION_PAUSE) {
             app_game_set_paused(state->game, !app_game_read(state->game).paused);
@@ -71,7 +82,25 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
 
 static void update(void *value)
 {
-    app_game_update(((host_state_t *)value)->game);
+    host_state_t *state = value;
+    app_game_update(state->game);
+    /* When a run ends, write it down if it beat the record. */
+    fl_state_t model;
+    app_game_get_model(state->game, &model);
+    if (model.phase != FL_PHASE_WON || state->recorded) {
+        return;
+    }
+    state->recorded = true;
+    int stars = fl_star_rating(&model);
+    if (model.score > state->record.best_score) {
+        state->record.best_score = model.score;
+        state->record.best_wave = model.wave;
+        state->record.best_stars = (uint8_t)stars;
+        frostline_record_store(&state->record);
+    } else if (stars > state->record.best_stars) {
+        state->record.best_stars = (uint8_t)stars;
+        frostline_record_store(&state->record);
+    }
 }
 
 static int render(void *value)
@@ -85,8 +114,11 @@ static int render(void *value)
         return -1;
     }
     ClearBackground(BLACK);
+    host_state_t *state = value;
     fl_state_t model;
-    app_game_get_model(((host_state_t *)value)->game, &model);
+    app_game_get_model(state->game, &model);
+    model.best_score = state->record.best_score;
+    model.best_stars = state->record.best_stars;
     frostline_view_draw(&model);
     EndDrawing();
     return 0;

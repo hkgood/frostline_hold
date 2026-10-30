@@ -301,6 +301,77 @@ static void test_the_titan_ignores_the_frost_and_the_stun(void)
     assert(state.enemies[0].stun_ticks == 0);
 }
 
+static void test_a_hero_stands_on_a_post(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    uint16_t gold = state.gold;
+    assert(fl_build_hero(&state, 56, 232, FL_HERO_WARDEN));
+    assert(state.gold == gold - FL_HERO_STATS[FL_HERO_WARDEN].cost);
+    assert(state.heroes[0].active);
+    assert(state.heroes[0].alive);
+    assert(state.heroes[0].x == FL_HERO_POSTS[0].x);
+    assert(state.heroes[0].y == FL_HERO_POSTS[0].y);
+    /* The second post is still free. */
+    assert(!state.heroes[1].active);
+    /* The hero cannot pay for itself twice. */
+    state.gold = 0;
+    assert(!fl_build_hero(&state, 212, 300, FL_HERO_WARDEN));
+}
+
+static void test_a_hero_holds_the_road(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    assert(fl_build_hero(&state, 56, 232, FL_HERO_WARDEN));
+    /* An enemy right beside the hero has to stop and fight it. */
+    place_enemy(&state, 0, FL_ENEMY_WOLF, 0.0f, 40.0f);
+    state.enemies[0].x = 56.0f;
+    state.enemies[0].y = 232.0f;
+    float before = state.enemies[0].dist;
+    uint16_t hp = state.heroes[0].hp;
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].dist == before);
+    assert(state.heroes[0].hp < hp);
+}
+
+static void test_the_frost_nova_clears_the_road(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    assert(fl_build_hero(&state, 56, 232, FL_HERO_WARDEN));
+    place_enemy(&state, 0, FL_ENEMY_WOLF, 0.0f, 200.0f);
+    state.enemies[0].x = 80.0f;
+    state.enemies[0].y = 232.0f;
+    float before = state.enemies[0].hp;
+    assert(fl_cast_hero_skill(&state, 0));
+    assert(state.enemies[0].hp < before);
+    /* The nova cannot be cast twice in a row. */
+    assert(!fl_cast_hero_skill(&state, 0));
+    assert(state.heroes[0].skill_timer > 0);
+}
+
+static void test_the_star_rating_follows_the_lives_left(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WON;
+    state.lives = 20;
+    assert(fl_star_rating(&state) == 3);
+    state.lives = 12;
+    assert(fl_star_rating(&state) == 2);
+    state.lives = 3;
+    assert(fl_star_rating(&state) == 1);
+    state.phase = FL_PHASE_LOST;
+    assert(fl_star_rating(&state) == 0);
+}
+
 static void test_state_hash_is_stable_for_the_same_seed(void)
 {
     fl_state_t a, b;
@@ -367,6 +438,10 @@ int main(void)
     test_the_banner_hardens_its_ally();
     test_a_sap_takes_three_lives_from_the_gate();
     test_the_titan_ignores_the_frost_and_the_stun();
+    test_a_hero_stands_on_a_post();
+    test_a_hero_holds_the_road();
+    test_the_frost_nova_clears_the_road();
+    test_the_star_rating_follows_the_lives_left();
     test_score_counts_kills_and_cleared_waves();
     test_a_leak_is_counted_and_costs_the_flawless_bonus();
     test_state_hash_is_stable_for_the_same_seed();

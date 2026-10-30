@@ -19,6 +19,8 @@
 
 #define FL_BUILD_SPOT_COUNT 14
 #define FL_HERO_POST_COUNT 2
+#define FL_HERO_KIND_COUNT 1
+#define FL_HERO_BLOCK_RADIUS 34
 #define FL_WAVE_COUNT 16
 #define FL_ENEMY_KIND_COUNT 8
 #define FL_BATCH_MAX 4
@@ -175,8 +177,26 @@ static const fl_point_t FL_BUILD_SPOTS[FL_BUILD_SPOT_COUNT] = {
 };
 
 static const fl_point_t FL_HERO_POSTS[FL_HERO_POST_COUNT] = {
-    {96, 300},
-    {376, 214},
+    {56, 232},
+    {212, 300},
+};
+
+/* The hero roster. */
+typedef struct {
+    int16_t hp;
+    int16_t damage;
+    int16_t range;
+    uint16_t cooldown;
+    uint16_t cost;
+    int16_t skill_damage;
+    int16_t skill_radius;
+    uint16_t skill_slow_ticks;
+    uint16_t skill_cooldown;
+    uint16_t respawn_ticks;
+} fl_hero_stat_t;
+
+static const fl_hero_stat_t FL_HERO_STATS[FL_HERO_KIND_COUNT] = {
+    {220, 16, 95, 20, 150, 45, 130, 90, 1200, 600},
 };
 
 /* Enemy roster: kind, hp, armor, speed in px/s, bounty, score, behaviour,

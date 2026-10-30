@@ -21,6 +21,7 @@
 
 #define TOWER_DRAW_SIZE 48.0f
 #define ENEMY_DRAW_SIZE 32.0f
+#define HERO_DRAW_SIZE 40.0f
 #define HUSK_DRAW_SIZE 40.0f
 #define TITAN_DRAW_SIZE 64.0f
 #define PAD_DRAW_SIZE 24.0f
@@ -43,10 +44,12 @@ static const char *const ENEMY_NAMES[8] = {
 };
 static const char *const TOWER_LABELS[3] = {"GUARD", "FROST", "SIEGE"};
 static const int TOWER_COSTS[3] = {70, 120, 160};
+static const int HERO_COST = 150;
 
 typedef struct {
     raylib_lite_atlas_t terrain;
     raylib_lite_atlas_t units;
+    raylib_lite_atlas_t heroes;
     raylib_lite_atlas_t props;
     raylib_lite_atlas_t props_husk;
     raylib_lite_atlas_t props_titan;
@@ -59,6 +62,9 @@ typedef struct {
     raylib_lite_asset_id_t icon_heart;
     raylib_lite_asset_id_t icon_coin;
     raylib_lite_asset_id_t icon_score;
+    raylib_lite_asset_id_t icon_nova;
+    raylib_lite_asset_id_t icon_star;
+    raylib_lite_asset_id_t hero[4];
 } view_assets_t;
 
 static view_assets_t s_assets;
@@ -68,6 +74,7 @@ void frostline_view_init(void)
     memset(&s_assets, 0, sizeof(s_assets));
     s_assets.terrain = raylib_lite_atlas_load("terrain.atlas");
     s_assets.units = raylib_lite_atlas_load("units.atlas");
+    s_assets.heroes = raylib_lite_atlas_load("heroes.atlas");
     s_assets.props = raylib_lite_atlas_load("props.atlas");
     s_assets.props_husk = raylib_lite_atlas_load("props_husk.atlas");
     s_assets.props_titan = raylib_lite_atlas_load("props_titan.atlas");
@@ -98,12 +105,20 @@ void frostline_view_init(void)
     s_assets.icon_heart = raylib_lite_asset_id("icon_heart");
     s_assets.icon_coin = raylib_lite_asset_id("icon_coin");
     s_assets.icon_score = raylib_lite_asset_id("icon_score");
+    s_assets.icon_nova = raylib_lite_asset_id("icon_nova");
+    s_assets.icon_star = raylib_lite_asset_id("icon_star");
+    for (int i = 0; i < 4; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "hero_warden_%d", i);
+        s_assets.hero[i] = raylib_lite_asset_id(name);
+    }
 }
 
 void frostline_view_shutdown(void)
 {
     raylib_lite_atlas_unload(s_assets.terrain);
     raylib_lite_atlas_unload(s_assets.units);
+    raylib_lite_atlas_unload(s_assets.heroes);
     raylib_lite_atlas_unload(s_assets.props);
     raylib_lite_atlas_unload(s_assets.props_husk);
     raylib_lite_atlas_unload(s_assets.props_titan);
@@ -114,6 +129,7 @@ void frostline_view_shutdown(void)
 bool frostline_view_ready(void)
 {
     return s_assets.terrain.texture.id != 0 && s_assets.units.texture.id != 0
+           && s_assets.heroes.texture.id != 0
            && s_assets.props.texture.id != 0 && s_assets.fx.texture.id != 0
            && s_assets.props_husk.texture.id != 0
            && s_assets.props_titan.texture.id != 0;
@@ -233,6 +249,27 @@ static void draw_towers(const fl_state_t *model)
     }
 }
 
+static void draw_heroes(const fl_state_t *model)
+{
+    int frame = (int)((model->tick / 6u) % 4u);
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        const fl_hero_t *hero = &model->heroes[i];
+        if (!hero->active || !hero->alive) {
+            continue;
+        }
+        float x = (float)hero->x - HERO_DRAW_SIZE / 2.0f;
+        float y = (float)hero->y - HERO_DRAW_SIZE + 8.0f;
+        draw_padded(s_assets.heroes, s_assets.hero[frame], x, y,
+                    HERO_DRAW_SIZE);
+        /* Health bar, and the charge of the frost nova underneath. */
+        int bar_x = hero->x - 14;
+        DrawRectangle(bar_x, (int)y - 6, 28, 4, WHITE);
+        DrawRectangleLines(bar_x, (int)y - 6, 28, 4, BLACK);
+        int filled = hero->max_hp ? (int)((int)hero->hp * 26 / (int)hero->max_hp) : 0;
+        DrawRectangle(bar_x + 1, (int)y - 5, filled, 2, BLACK);
+    }
+}
+
 static void draw_enemies(const fl_state_t *model)
 {
     int frame = (int)((model->tick / 5u) % 4u);
@@ -291,22 +328,46 @@ static void draw_hud(const fl_state_t *model)
     DrawRectangle(0, 0, FL_VIEW_WIDTH, FL_HUD_HEIGHT, BLACK);
     DrawRectangle(0, FL_HUD_HEIGHT - 2, FL_VIEW_WIDTH, 2, WHITE);
 
+    /* The hero's frost nova: lit when it is ready, dark when it is not. */
+    int ready = 0;
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        const fl_hero_t *hero = &model->heroes[i];
+        if (hero->active && hero->alive && hero->skill_timer == 0) {
+            ready = 1;
+        }
+    }
+    bool hero_placed = false;
+    for (int i = 0; i < FL_MAX_HEROES; ++i) {
+        if (model->heroes[i].active) {
+            hero_placed = true;
+        }
+    }
+    draw_panel(FL_SKILL_BTN_X, FL_SKILL_BTN_Y, FL_SKILL_BTN_W, FL_SKILL_BTN_H,
+               ready);
+    if (ready) {
+        draw_padded(s_assets.fx, s_assets.icon_nova,
+                    (float)(FL_SKILL_BTN_X + 8), (float)(FL_SKILL_BTN_Y + 8),
+                    ICON_DRAW_SIZE);
+    } else if (hero_placed) {
+        DrawText("...", FL_SKILL_BTN_X + 10, FL_SKILL_BTN_Y + 10, 14, WHITE);
+    }
+
     /* The icon art is black, so it needs a white plate to read on the bar. */
-    DrawRectangle(8, 12, 20, 20, WHITE);
-    draw_padded(s_assets.fx, s_assets.icon_heart, 10.0f, 14.0f, ICON_DRAW_SIZE);
-    DrawText(TextFormat("%u", (unsigned)model->lives), 32, 10, 16, WHITE);
-    DrawRectangle(68, 12, 20, 20, WHITE);
-    draw_padded(s_assets.fx, s_assets.icon_coin, 70.0f, 14.0f, ICON_DRAW_SIZE);
-    DrawText(TextFormat("%u", (unsigned)model->gold), 92, 10, 16, WHITE);
+    DrawRectangle(44, 12, 20, 20, WHITE);
+    draw_padded(s_assets.fx, s_assets.icon_heart, 46.0f, 14.0f, ICON_DRAW_SIZE);
+    DrawText(TextFormat("%u", (unsigned)model->lives), 68, 10, 16, WHITE);
+    DrawRectangle(108, 12, 20, 20, WHITE);
+    draw_padded(s_assets.fx, s_assets.icon_coin, 110.0f, 14.0f, ICON_DRAW_SIZE);
+    DrawText(TextFormat("%u", (unsigned)model->gold), 132, 10, 16, WHITE);
 
     /* Points read as a third resource so the run has a running tally. */
-    DrawRectangle(140, 12, 20, 20, WHITE);
-    draw_padded(s_assets.fx, s_assets.icon_score, 142.0f, 14.0f, ICON_DRAW_SIZE);
-    DrawText(TextFormat("%lu", (unsigned long)model->score), 164, 10, 16, WHITE);
+    DrawRectangle(170, 12, 20, 20, WHITE);
+    draw_padded(s_assets.fx, s_assets.icon_score, 172.0f, 14.0f, ICON_DRAW_SIZE);
+    DrawText(TextFormat("%lu", (unsigned long)model->score), 194, 10, 16, WHITE);
 
-    DrawText("WAVE", 228, 6, 12, WHITE);
+    DrawText("WAVE", 248, 6, 12, WHITE);
     DrawText(TextFormat("%02u/%02d", (unsigned)model->wave, FL_WAVE_COUNT),
-             228, 22, 16, WHITE);
+             248, 22, 16, WHITE);
 
     /* Pause and speed buttons. */
     draw_panel(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H, false);
@@ -401,6 +462,16 @@ static void draw_build_bar(const fl_state_t *model)
         DrawText(TextFormat("%d", TOWER_COSTS[i]), x + 6, FL_TOWER_CARD_Y + 42, 14,
                  armed ? WHITE : BLACK);
     }
+
+    /* The hero card: arming it puts the warden on a post. */
+    bool hero_armed = model->selected_hero != 0xFF;
+    draw_panel(FL_HERO_CARD_X, FL_TOWER_CARD_Y, FL_TOWER_CARD_W,
+               FL_TOWER_CARD_H, !hero_armed);
+    draw_padded(s_assets.heroes, s_assets.hero[0],
+                (float)(FL_HERO_CARD_X + (FL_TOWER_CARD_W - 38) / 2),
+                (float)(FL_TOWER_CARD_Y + 2), 38.0f);
+    DrawText(TextFormat("%d", HERO_COST), FL_HERO_CARD_X + 6,
+             FL_TOWER_CARD_Y + 42, 14, hero_armed ? WHITE : BLACK);
 }
 
 static void draw_overlay(const fl_state_t *model)
@@ -418,22 +489,40 @@ static void draw_overlay(const fl_state_t *model)
     draw_text_centered(TextFormat("%lu", (unsigned long)model->score),
                        FL_VIEW_WIDTH / 2, 192, 32, WHITE);
 
+    /* Three stars for the run: filled ones are earned. The glyph is black
+     * art, so it needs a white plate to read against the dark panel. */
+    int stars = fl_star_rating(model);
+    for (int i = 0; i < 3; ++i) {
+        int x = FL_VIEW_WIDTH / 2 - 34 + i * 24;
+        if (i < stars) {
+            DrawRectangle(x, 224, ICON_DRAW_SIZE + 4, ICON_DRAW_SIZE + 4,
+                          WHITE);
+            draw_padded(s_assets.fx, s_assets.icon_star, (float)(x + 2),
+                        226.0f, ICON_DRAW_SIZE);
+        } else {
+            DrawRectangleLines(x, 224, ICON_DRAW_SIZE + 4, ICON_DRAW_SIZE + 4,
+                               WHITE);
+        }
+    }
+
     draw_text_centered(TextFormat("KILLS %u      WAVE BONUS %lu",
                                   (unsigned)model->kills,
                                   (unsigned long)model->score_waves),
-                       FL_VIEW_WIDTH / 2, 244, 14, WHITE);
+                       FL_VIEW_WIDTH / 2, 252, 14, WHITE);
     draw_text_centered(TextFormat("LIVES %u      BONUS %lu",
                                   (unsigned)model->lives,
                                   (unsigned long)model->score_bonus),
-                       FL_VIEW_WIDTH / 2, 266, 14, WHITE);
+                       FL_VIEW_WIDTH / 2, 274, 14, WHITE);
     /* The wave counter steps past the last wave once the run is won. */
     unsigned shown_wave = (unsigned)model->wave;
     if (shown_wave > (unsigned)FL_WAVE_COUNT) {
         shown_wave = (unsigned)FL_WAVE_COUNT;
     }
     draw_text_centered(TextFormat("WAVE %02u/%02d", shown_wave, FL_WAVE_COUNT),
-                       FL_VIEW_WIDTH / 2, 296, 14, WHITE);
-    draw_text_centered("TAP TO FIGHT AGAIN", FL_VIEW_WIDTH / 2, 340, 14, WHITE);
+                       FL_VIEW_WIDTH / 2, 304, 14, WHITE);
+    draw_text_centered(TextFormat("BEST %lu", (unsigned long)model->best_score),
+                       FL_VIEW_WIDTH / 2, 326, 14, WHITE);
+    draw_text_centered("TAP TO FIGHT AGAIN", FL_VIEW_WIDTH / 2, 352, 14, WHITE);
 }
 
 void frostline_view_draw(const fl_state_t *model)
@@ -444,6 +533,7 @@ void frostline_view_draw(const fl_state_t *model)
     draw_background();
     draw_build_pads(model);
     draw_towers(model);
+    draw_heroes(model);
     draw_enemies(model);
     draw_projectiles(model);
     draw_hud(model);

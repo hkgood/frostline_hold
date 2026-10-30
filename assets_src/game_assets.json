@@ -30,6 +30,11 @@
       "config": "atlas_props_titan.json",
       "source": "props_titan_atlas_source.png",
       "output": "props_titan.atlas"
+    },
+    {
+      "config": "atlas_heroes.json",
+      "source": "heroes_atlas_source.png",
+      "output": "heroes.atlas"
     }
   ],
   "maps": [],
