@@ -77,20 +77,46 @@ BUILD_SPOTS = [
 
 HERO_POSTS = [(96, 300), (376, 214)]
 
-# Enemy roster. (kind, name, hp, armor, speed px/s, bounty, score)
-# `bounty` is the gold paid on a kill, `score` is the points paid on a kill.
+# Enemy roster.
+# (kind, name, hp, armor, speed px/s, bounty, score, behaviour, size)
+#
+# The behaviour says what the enemy does beyond walking and hitting:
+#   0 plain      - walks and hits the gate
+#   1 healer     - mends the wounded ally nearest to it
+#   2 banner     - hardens the allies around it
+#   3 sap        - blows a hole in the gate instead of walking through it
+#   4 titan      - the boss: too big to slow, too heavy to stun
 ENEMY_WOLF = 0
 ENEMY_RAIDER = 1
+ENEMY_SKITTER = 2
+ENEMY_HUSK = 3
+ENEMY_SHAMAN = 4
+ENEMY_BANNERMAN = 5
+ENEMY_SAP = 6
+ENEMY_TITAN = 7
+
+ENEMY_BEHAVIOUR_PLAIN = 0
+ENEMY_BEHAVIOUR_HEALER = 1
+ENEMY_BEHAVIOUR_BANNER = 2
+ENEMY_BEHAVIOUR_SAP = 3
+ENEMY_BEHAVIOUR_TITAN = 4
 
 ENEMY_STATS = [
-    (ENEMY_WOLF, "wolf", 40, 0, 52, 5, 10),
-    (ENEMY_RAIDER, "raider", 70, 2, 34, 9, 25),
+    (ENEMY_WOLF, "wolf", 40, 0, 52, 5, 10, ENEMY_BEHAVIOUR_PLAIN, 32),
+    (ENEMY_RAIDER, "raider", 70, 2, 34, 9, 25, ENEMY_BEHAVIOUR_PLAIN, 32),
+    (ENEMY_SKITTER, "skitter", 26, 0, 76, 4, 12, ENEMY_BEHAVIOUR_PLAIN, 32),
+    (ENEMY_HUSK, "husk", 190, 18, 20, 16, 45, ENEMY_BEHAVIOUR_PLAIN, 40),
+    (ENEMY_SHAMAN, "shaman", 85, 0, 30, 14, 40, ENEMY_BEHAVIOUR_HEALER, 32),
+    (ENEMY_BANNERMAN, "banner", 110, 6, 26, 15, 45, ENEMY_BEHAVIOUR_BANNER, 32),
+    (ENEMY_SAP, "sap", 60, 0, 46, 12, 35, ENEMY_BEHAVIOUR_SAP, 32),
+    (ENEMY_TITAN, "titan", 1200, 10, 16, 120, 400, ENEMY_BEHAVIOUR_TITAN, 64),
 ]
 
 # Points awarded for clearing a wave, on top of the points from the kills.
 # Twice the gold reward keeps the score curve tied to the difficulty curve.
 def wave_score_bonus(wave):
     return wave["reward"] * 2
+
 
 # Wave table. Each wave is a list of batches; a batch spawns `count` enemies of
 # one kind every `interval` ticks down one lane.
@@ -99,54 +125,69 @@ LANE_A = 0
 LANE_B = 1
 
 WAVES = [
-    # 1-3: wolves only, a gentle teaching ramp.
-    {"reward": 50, "hp_mult": 100, "armor_add": 0, "batches": [(ENEMY_WOLF, 4, 34, LANE_A)]},
-    {"reward": 60, "hp_mult": 100, "armor_add": 0, "batches": [(ENEMY_WOLF, 9, 24, LANE_A)]},
-    {"reward": 65, "hp_mult": 105, "armor_add": 0, "batches": [(ENEMY_WOLF, 8, 24, LANE_A),
-                               (ENEMY_RAIDER, 2, 30, LANE_A)]},
-    # 4-6: the raiders arrive, but the numbers stay readable.
-    {"reward": 70, "hp_mult": 110, "armor_add": 1, "batches": [(ENEMY_WOLF, 8, 22, LANE_A),
-                               (ENEMY_RAIDER, 4, 26, LANE_A)]},
-    {"reward": 75, "hp_mult": 120, "armor_add": 2, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
-                               (ENEMY_WOLF, 8, 20, LANE_A)]},
-    {"reward": 80, "hp_mult": 130, "armor_add": 3, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
-                               (ENEMY_WOLF, 8, 18, LANE_A),
-                               (ENEMY_RAIDER, 2, 26, LANE_B)]},
-    # 7-9: the second lane opens up.
-    {"reward": 85, "hp_mult": 145, "armor_add": 4, "batches": [(ENEMY_WOLF, 10, 18, LANE_A),
-                               (ENEMY_RAIDER, 6, 24, LANE_A),
-                               (ENEMY_RAIDER, 4, 24, LANE_B)]},
-    {"reward": 90, "hp_mult": 160, "armor_add": 6, "batches": [(ENEMY_WOLF, 12, 16, LANE_A),
-                               (ENEMY_RAIDER, 6, 22, LANE_A),
-                               (ENEMY_RAIDER, 4, 22, LANE_B)]},
-    {"reward": 95, "hp_mult": 180, "armor_add": 8, "batches": [(ENEMY_RAIDER, 8, 20, LANE_A),
-                               (ENEMY_WOLF, 12, 14, LANE_A),
-                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
-    # 10-13: the pressure keeps climbing.
-    {"reward": 105, "hp_mult": 205, "armor_add": 11, "batches": [(ENEMY_RAIDER, 10, 18, LANE_A),
-                               (ENEMY_WOLF, 14, 12, LANE_A),
-                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
-    {"reward": 115, "hp_mult": 235, "armor_add": 13, "batches": [(ENEMY_WOLF, 16, 12, LANE_A),
-                               (ENEMY_RAIDER, 10, 16, LANE_A),
-                               (ENEMY_RAIDER, 8, 16, LANE_B)]},
-    {"reward": 125, "hp_mult": 270, "armor_add": 16, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
-                               (ENEMY_WOLF, 14, 12, LANE_A),
-                               (ENEMY_RAIDER, 10, 16, LANE_B),
-                               (ENEMY_WOLF, 8, 12, LANE_B)]},
-    {"reward": 140, "hp_mult": 310, "armor_add": 19, "batches": [(ENEMY_WOLF, 18, 10, LANE_A),
-                               (ENEMY_RAIDER, 12, 14, LANE_A),
-                               (ENEMY_RAIDER, 10, 14, LANE_B),
-                               (ENEMY_RAIDER, 8, 14, LANE_B)]},
+    # 1-2: wolves only, a gentle teaching ramp.
+    {"reward": 50, "hp_mult": 100, "armor_add": 0,
+     "batches": [(ENEMY_WOLF, 4, 34, LANE_A)]},
+    {"reward": 60, "hp_mult": 100, "armor_add": 0,
+     "batches": [(ENEMY_WOLF, 9, 24, LANE_A)]},
+    {"reward": 65, "hp_mult": 105, "armor_add": 0,
+     "batches": [(ENEMY_WOLF, 8, 24, LANE_A), (ENEMY_RAIDER, 2, 30, LANE_A)]},
+    # 4: the raiders arrive.
+    {"reward": 70, "hp_mult": 110, "armor_add": 1,
+     "batches": [(ENEMY_WOLF, 8, 22, LANE_A), (ENEMY_RAIDER, 4, 26, LANE_A)]},
+    # 5: the skitters, fast and thin.
+    {"reward": 75, "hp_mult": 115, "armor_add": 2,
+     "batches": [(ENEMY_WOLF, 8, 20, LANE_A), (ENEMY_SKITTER, 5, 16, LANE_A)]},
+    # 6: the second lane opens.
+    {"reward": 80, "hp_mult": 125, "armor_add": 3,
+     "batches": [(ENEMY_RAIDER, 6, 24, LANE_A), (ENEMY_WOLF, 8, 18, LANE_A),
+                 (ENEMY_RAIDER, 2, 26, LANE_B)]},
+    # 7: the husks walk in, slow and armoured.
+    {"reward": 90, "hp_mult": 135, "armor_add": 4,
+     "batches": [(ENEMY_WOLF, 10, 18, LANE_A), (ENEMY_HUSK, 2, 40, LANE_A),
+                 (ENEMY_RAIDER, 4, 24, LANE_B)]},
+    # 8: mixed pressure.
+    {"reward": 95, "hp_mult": 150, "armor_add": 5,
+     "batches": [(ENEMY_WOLF, 12, 16, LANE_A), (ENEMY_RAIDER, 6, 22, LANE_A),
+                 (ENEMY_RAIDER, 4, 22, LANE_B)]},
+    # 9: the shaman mends the wounded.
+    {"reward": 105, "hp_mult": 280, "armor_add": 6,
+     "batches": [(ENEMY_RAIDER, 8, 20, LANE_A), (ENEMY_WOLF, 12, 14, LANE_A),
+                 (ENEMY_SHAMAN, 1, 60, LANE_A),
+                 (ENEMY_RAIDER, 6, 20, LANE_B)]},
+    # 10: skitters flood the lane.
+    {"reward": 115, "hp_mult": 315, "armor_add": 7,
+     "batches": [(ENEMY_SKITTER, 10, 12, LANE_A), (ENEMY_RAIDER, 8, 18, LANE_A),
+                 (ENEMY_WOLF, 12, 14, LANE_A),
+                 (ENEMY_RAIDER, 8, 18, LANE_B)]},
+    # 11: the banner hardens the escort.
+    {"reward": 125, "hp_mult": 350, "armor_add": 8,
+     "batches": [(ENEMY_WOLF, 14, 12, LANE_A), (ENEMY_RAIDER, 8, 18, LANE_A),
+                 (ENEMY_BANNERMAN, 1, 60, LANE_A),
+                 (ENEMY_RAIDER, 8, 18, LANE_B)]},
+    # 12: husks and skitters together.
+    {"reward": 135, "hp_mult": 390, "armor_add": 9,
+     "batches": [(ENEMY_HUSK, 3, 40, LANE_A), (ENEMY_RAIDER, 10, 16, LANE_A),
+                 (ENEMY_SKITTER, 10, 12, LANE_A),
+                 (ENEMY_RAIDER, 10, 16, LANE_B)]},
+    # 13: the saps, quick and volatile.
+    {"reward": 145, "hp_mult": 435, "armor_add": 10,
+     "batches": [(ENEMY_WOLF, 14, 12, LANE_A), (ENEMY_RAIDER, 10, 16, LANE_A),
+                 (ENEMY_SAP, 3, 30, LANE_A),
+                 (ENEMY_RAIDER, 10, 16, LANE_B)]},
     # 14: the wall of raiders.
-    {"reward": 160, "hp_mult": 360, "armor_add": 23, "batches": [(ENEMY_RAIDER, 14, 14, LANE_A),
-                               (ENEMY_WOLF, 18, 10, LANE_A),
-                               (ENEMY_RAIDER, 12, 14, LANE_B),
-                               (ENEMY_WOLF, 10, 12, LANE_B)]},
-    # 15: the boss wave, flanked by raiders.
-    {"reward": 220, "hp_mult": 420, "armor_add": 26, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
-                                (ENEMY_RAIDER, 12, 16, LANE_B),
-                                (ENEMY_WOLF, 16, 10, LANE_A),
-                                (ENEMY_WOLF, 16, 10, LANE_B)]},
+    {"reward": 165, "hp_mult": 495, "armor_add": 11,
+     "batches": [(ENEMY_RAIDER, 12, 14, LANE_A), (ENEMY_WOLF, 16, 10, LANE_A),
+                 (ENEMY_HUSK, 3, 36, LANE_A),
+                 (ENEMY_RAIDER, 12, 14, LANE_B)]},
+    # 15: the frost titan walks in behind the escort.
+    {"reward": 240, "hp_mult": 560, "armor_add": 12,
+     "batches": [(ENEMY_RAIDER, 12, 16, LANE_A), (ENEMY_WOLF, 16, 10, LANE_A),
+                 (ENEMY_RAIDER, 12, 16, LANE_B), (ENEMY_WOLF, 16, 10, LANE_B)]},
+    # 16: the titan itself, at the head of the last push.
+    {"reward": 300, "hp_mult": 645, "armor_add": 14,
+     "batches": [(ENEMY_TITAN, 1, 60, LANE_A), (ENEMY_RAIDER, 10, 14, LANE_A),
+                 (ENEMY_RAIDER, 10, 14, LANE_B)]},
 ]
 
 for _wave in WAVES:

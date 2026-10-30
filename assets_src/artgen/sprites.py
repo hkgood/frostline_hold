@@ -15,10 +15,14 @@ from artgen.canvas import (BLACK, WHITE, Canvas, fill_polygon, hatch_polygon,
 
 UNIT_CELL = 48
 PROP_CELL = 32
+HUSK_CELL = 40
+TITAN_CELL = 64
 FX_CELL = 16
 
 UNIT_ATLAS_CELL = UNIT_CELL + 4
 PROP_ATLAS_CELL = PROP_CELL + 4
+HUSK_ATLAS_CELL = HUSK_CELL + 4
+TITAN_ATLAS_CELL = TITAN_CELL + 4
 FX_ATLAS_CELL = FX_CELL + 4
 
 
@@ -252,10 +256,11 @@ def _enemy_raider(frame):
     # Axe behind the figure: haft, then a broad blade with a lit edge.
     c.fill_rect(21, top + 3, 2, 16, BLACK)
     c.fill_rect(22, top + 6, 1, 10, WHITE)
-    fill_polygon(c, [(20, top), (29, top + 2), (31, top + 7), (27, top + 12),
-                     (20, top + 10)], BLACK)
-    fill_polygon(c, [(22, top + 2), (27, top + 4), (28, top + 7), (25, top + 9),
-                     (22, top + 8)], WHITE)
+    # A wedge blade with a lit edge, not a blob.
+    fill_polygon(c, [(20, top + 1), (29, top + 3), (29, top + 11),
+                     (20, top + 9)], BLACK)
+    c.fill_rect(21, top + 3, 7, 1, WHITE)
+    c.fill_rect(21, top + 7, 6, 1, WHITE)
 
     # Cloak: a solid black mass, wide at the hem.
     fill_polygon(c, [(8, top + 18), (10, top + 10), (13, top + 6),
@@ -280,6 +285,200 @@ def _enemy_raider(frame):
     c.fill_rect(17, top + 20, 4, 6, BLACK)
     c.fill_rect(12, top + 21, 1, 4, WHITE)
     c.fill_rect(18, top + 21, 1, 4, WHITE)
+    return c
+
+
+def _enemy_skitter(frame):
+    """Ice skitter: a low six-legged crawler that scuttles."""
+    c = _canvas(PROP_CELL)
+    bob = (0, -1, 0, 1)[frame % 4]
+    body_y = 17 + bob
+    stride = (2, 0, -2, 0)[frame % 4]
+
+    # Six legs, drawn as thin white strokes off a black body.
+    for index, (x, spread) in enumerate(((6, -1), (9, 0), (13, 1), (17, 0),
+                                         (21, -1), (24, 0))):
+        reach = stride if index % 2 == 0 else -stride
+        c.line(x, body_y + 2, x + spread * 4, body_y + 9 + reach, BLACK)
+        c.line(x + spread * 4, body_y + 9 + reach,
+               x + spread * 6, body_y + 13 + reach, BLACK)
+
+    # Body: a dark carapace with a pale seam.
+    fill_polygon(c, [(7, body_y - 2), (13, body_y - 5), (21, body_y - 4),
+                     (26, body_y), (21, body_y + 4), (12, body_y + 4)], BLACK)
+    c.line(12, body_y - 1, 20, body_y - 2, WHITE)
+    c.line(13, body_y + 1, 19, body_y, WHITE)
+    # Eyes and mandibles.
+    c.fill_rect(23, body_y - 2, 2, 2, WHITE)
+    c.fill_rect(26, body_y - 1, 2, 1, WHITE)
+    c.line(27, body_y + 1, 30, body_y + 2, BLACK)
+    c.line(27, body_y + 2, 30, body_y + 4, BLACK)
+    return c
+
+
+def _enemy_husk(frame):
+    """Frost husk: a broad armoured brute that barely hurries."""
+    c = _canvas(40)
+    bob = (0, -1, 0, 1)[frame % 4]
+    base = 37 + bob
+    stride = (2, 0, -2, 0)[frame % 4]
+
+    # Legs.
+    for x, extra in ((10, 0), (15, stride), (24, -stride), (29, 0)):
+        c.fill_rect(x, base - 8, 5, 9, BLACK)
+        c.fill_rect(x - 1 + extra // 2, base + 1, 7, 3, BLACK)
+        c.fill_rect(x + 1, base - 7, 1, 7, WHITE)
+
+    # Torso: a heavy black mass with plate seams.
+    fill_polygon(c, [(6, base - 8), (34, base - 8), (31, base - 24),
+                     (24, base - 28), (16, base - 28), (9, base - 24)], BLACK)
+    c.hline(9, base - 20, 22, WHITE)
+    c.hline(11, base - 14, 18, WHITE)
+    c.vline(20, base - 26, 16, WHITE)
+    # Pauldrons.
+    c.fill_rect(2, base - 26, 10, 8, BLACK)
+    c.fill_rect(28, base - 26, 10, 8, BLACK)
+    c.fill_rect(4, base - 24, 6, 1, WHITE)
+    c.fill_rect(30, base - 24, 6, 1, WHITE)
+    # A small head sunk between the shoulders.
+    fill_polygon(c, [(15, base - 28), (25, base - 28), (23, base - 34),
+                     (17, base - 34)], BLACK)
+    c.fill_rect(18, base - 31, 2, 2, WHITE)
+    c.fill_rect(21, base - 31, 2, 2, WHITE)
+    return c
+
+
+def _enemy_shaman(frame):
+    """Shaman: a hooded figure dragging a rune staff."""
+    c = _canvas(PROP_CELL)
+    bob = (0, 1, 0, -1)[frame % 4]
+    top = 5 + bob
+
+    # Staff with a carved head.
+    c.fill_rect(25, top - 1, 2, 20, BLACK)
+    c.fill_rect(26, top + 1, 1, 16, WHITE)
+    c.disc(26, top - 3, 4, BLACK)
+    c.disc(26, top - 3, 2, WHITE)
+    c.fill_rect(25, top - 6, 2, 2, BLACK)
+
+    # Cloak.
+    fill_polygon(c, [(7, top + 18), (10, top + 9), (14, top + 6),
+                     (19, top + 7), (21, top + 14), (21, top + 18)], BLACK)
+    c.line(12, top + 10, 10, top + 17, WHITE)
+    c.line(16, top + 9, 16, top + 17, WHITE)
+    # Hood and the dark under it.
+    fill_polygon(c, [(10, top + 9), (12, top + 2), (17, top + 2),
+                     (20, top + 7), (19, top + 10)], BLACK)
+    c.fill_rect(13, top + 5, 2, 2, WHITE)
+    c.fill_rect(16, top + 5, 2, 2, WHITE)
+    # Arm reaching for the staff.
+    c.thick_line(18, top + 11, 25, top + 8, 2, BLACK)
+    return c
+
+
+def _enemy_banner(frame):
+    """Banner man: the hardening comes from the flag over his head."""
+    c = _canvas(PROP_CELL)
+    bob = (0, 1, 0, -1)[frame % 4]
+    top = 6 + bob
+
+    # Pole and flag.
+    c.fill_rect(24, 1, 2, 24, BLACK)
+    fill_polygon(c, [(26, 2), (31, 4), (28, 9), (26, 8)], BLACK)
+    c.fill_rect(27, 3, 2, 3, WHITE)
+    c.fill_rect(25, 1, 4, 2, BLACK)
+
+    # Body.
+    fill_polygon(c, [(7, top + 17), (9, top + 9), (13, top + 5),
+                     (18, top + 6), (20, top + 17)], BLACK)
+    c.line(11, top + 10, 10, top + 16, WHITE)
+    c.line(15, top + 9, 15, top + 16, WHITE)
+    # Hood.
+    fill_polygon(c, [(10, top + 8), (12, top + 1), (17, top + 2),
+                     (19, top + 7)], BLACK)
+    c.fill_rect(13, top + 4, 2, 2, WHITE)
+    c.fill_rect(16, top + 4, 1, 2, WHITE)
+    # Arm on the pole.
+    c.thick_line(18, top + 10, 25, top + 8, 2, BLACK)
+    return c
+
+
+def _enemy_sap(frame):
+    """Sap: a runner with a lit charge on its back."""
+    c = _canvas(PROP_CELL)
+    bob = (0, -1, 0, 1)[frame % 4]
+    body_y = 17 + bob
+    stride = (3, 0, -3, 0)[frame % 4]
+
+    # The charge on its back: a black ball with a white fuse.
+    c.disc(13, body_y - 7, 6, BLACK)
+    c.disc(13, body_y - 7, 4, WHITE)
+    c.fill_rect(12, body_y - 8, 3, 3, BLACK)
+    c.line(16, body_y - 11, 20, body_y - 14, BLACK)
+    c.set(21, body_y - 15, BLACK)
+    c.set(22, body_y - 16, BLACK)
+
+    # Hunched body and head.
+    fill_polygon(c, [(10, body_y - 2), (16, body_y - 4), (22, body_y - 2),
+                     (24, body_y + 4), (12, body_y + 5)], BLACK)
+    fill_polygon(c, [(20, body_y - 6), (25, body_y - 7), (28, body_y - 3),
+                     (25, body_y - 1), (21, body_y - 2)], BLACK)
+    c.fill_rect(25, body_y - 6, 2, 2, WHITE)
+    c.line(14, body_y - 1, 18, body_y - 2, WHITE)
+
+    # Legs.
+    for x, extra in ((12, 0), (16, stride), (21, -stride)):
+        length = 6 - abs(extra) // 2
+        c.fill_rect(x, body_y + 4, 3, length, BLACK)
+        c.fill_rect(x - 1 + extra // 2, body_y + 4 + length, 4, 2, BLACK)
+    return c
+
+
+def _enemy_titan(frame):
+    """The frost titan: one creature, a heavy head and a cracked carapace."""
+    c = _canvas(64)
+    bob = (0, -1, 0, 1)[frame % 4]
+    base = 60 + bob
+    stride = (2, 0, -2, 0)[frame % 4]
+
+    # Legs.
+    for x, extra in ((14, 0), (22, stride), (40, -stride), (48, 0)):
+        c.fill_rect(x, base - 14, 9, 15, BLACK)
+        c.fill_rect(x - 2 + extra // 2, base + 1, 13, 4, BLACK)
+        c.fill_rect(x + 2, base - 13, 2, 12, WHITE)
+
+    # Torso: a heavy black mass, narrower at the top.
+    fill_polygon(c, [(9, base - 12), (55, base - 12), (48, base - 36),
+                     (38, base - 42), (26, base - 42), (16, base - 36)], BLACK)
+    # Fractures in the ice.
+    c.line(20, base - 16, 26, base - 26, WHITE)
+    c.line(26, base - 26, 22, base - 33, WHITE)
+    c.line(26, base - 26, 33, base - 29, WHITE)
+    c.line(40, base - 18, 45, base - 28, WHITE)
+    c.line(45, base - 28, 41, base - 37, WHITE)
+
+    # Shoulders that sit on the torso rather than beside it.
+    fill_polygon(c, [(9, base - 12), (22, base - 14), (24, base - 30),
+                     (14, base - 34)], BLACK)
+    fill_polygon(c, [(55, base - 12), (42, base - 14), (40, base - 30),
+                     (50, base - 34)], BLACK)
+    c.line(12, base - 16, 21, base - 18, WHITE)
+    c.line(52, base - 16, 43, base - 18, WHITE)
+
+    # One big head, set straight on the shoulders.
+    fill_polygon(c, [(23, base - 40), (41, base - 40), (39, base - 54),
+                     (25, base - 54)], BLACK)
+    c.fill_rect(26, base - 50, 4, 4, WHITE)
+    c.fill_rect(35, base - 50, 4, 4, WHITE)
+    c.hline(29, base - 45, 7, WHITE)
+    # Horns of ice.
+    c.polygon([(24, base - 52), (16, base - 63), (28, base - 56)], BLACK)
+    c.polygon([(40, base - 52), (48, base - 63), (36, base - 56)], BLACK)
+
+    # Arms hanging at the sides.
+    for x, extra in ((8, stride), (50, -stride)):
+        c.thick_line(x + 4, base - 30, x + extra, base - 14, 7, BLACK)
+        c.thick_line(x + 4, base - 30, x + extra, base - 14, 2, WHITE)
     return c
 
 
@@ -366,6 +565,9 @@ def _build_grid(cell, entries, columns=8):
     The source cell is deliberately four pixels smaller than the atlas cell:
     the packer reserves output_cell - 4 for its crop, so matching the source
     to that size keeps the thumbnail step from resampling the art.
+
+    `columns` has to be the same number the atlas manifest declares, because
+    the packer cuts the source sheet apart by that count.
     """
     rows = (len(entries) + columns - 1) // columns
     canvas = Canvas(columns * cell, rows * cell)
@@ -396,15 +598,43 @@ def build_units():
     return _build_grid(UNIT_CELL, entries)
 
 
+# The roster, in the order the level data lists them. The husk and the titan
+# are bigger than the rank and file, so they live in their own sheets: every
+# cell in a sheet has to be the same size or the packer rescales the art.
+SMALL_ENEMY_BUILDERS = [
+    ("wolf", _enemy_wolf),
+    ("raider", _enemy_raider),
+    ("skitter", _enemy_skitter),
+    ("shaman", _enemy_shaman),
+    ("banner", _enemy_banner),
+    ("sap", _enemy_sap),
+]
+ENEMY_BUILDERS = SMALL_ENEMY_BUILDERS + [("husk", _enemy_husk),
+                                         ("titan", _enemy_titan)]
+
+
 def build_props():
+    """The rank and file, all on one 32 pixel grid."""
     entries = []
-    for frame in range(4):
-        entries.append((f"enemy_wolf_{frame}", _enemy_wolf(frame)))
-    for frame in range(4):
-        entries.append((f"enemy_raider_{frame}", _enemy_raider(frame)))
+    for name, builder in SMALL_ENEMY_BUILDERS:
+        for frame in range(4):
+            entries.append((f"enemy_{name}_{frame}", builder(frame)))
     entries.append(("build_pad_0", _build_pad(0)))
     entries.append(("build_pad_1", _build_pad(1)))
     return _build_grid(PROP_CELL, entries)
+
+
+def build_props_husk():
+    """The armoured brute, on its own 40 pixel grid."""
+    entries = [(f"enemy_husk_{frame}", _enemy_husk(frame)) for frame in range(4)]
+    return _build_grid(HUSK_CELL, entries, columns=4)
+
+
+def build_props_titan():
+    """The boss, on its own 64 pixel grid."""
+    entries = [(f"enemy_titan_{frame}", _enemy_titan(frame))
+               for frame in range(4)]
+    return _build_grid(TITAN_CELL, entries, columns=4)
 
 
 def build_fx():
@@ -421,15 +651,25 @@ def build_fx():
 
 
 PROPS_ANIMATIONS = [
-    {"name": "wolf_walk",
-     "frames": ["enemy_wolf_0", "enemy_wolf_1", "enemy_wolf_2", "enemy_wolf_3"],
-     "frame_ticks": 5},
-    {"name": "raider_walk",
-     "frames": ["enemy_raider_0", "enemy_raider_1", "enemy_raider_2",
-                "enemy_raider_3"],
-     "frame_ticks": 5},
+    {"name": f"{name}_walk",
+     "frames": [f"enemy_{name}_{i}" for i in range(4)],
+     "frame_ticks": 5}
+    for name, _builder in SMALL_ENEMY_BUILDERS
+] + [
     {"name": "pad_pulse", "frames": ["build_pad_0", "build_pad_1"],
      "frame_ticks": 15},
+]
+
+HUSK_ANIMATIONS = [
+    {"name": "husk_walk",
+     "frames": [f"enemy_husk_{i}" for i in range(4)],
+     "frame_ticks": 8},
+]
+
+TITAN_ANIMATIONS = [
+    {"name": "titan_walk",
+     "frames": [f"enemy_titan_{i}" for i in range(4)],
+     "frame_ticks": 10},
 ]
 
 FX_ANIMATIONS = [

@@ -5,12 +5,15 @@ than output_cell - 4, and LANCZOS turns pure black and white into grey. That
 silently breaks the art style, so the packed RGB565 payload is decoded and
 checked here.
 """
+import json
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from PIL import Image
 
 ASSETS = Path(__file__).resolve().parent.parent
 PROJECT = ASSETS.parent
@@ -49,8 +52,32 @@ class TestAssetPipeline(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    def test_the_manifest_columns_match_the_source_sheet(self):
+        """The packer cuts the source sheet by the manifest's column count.
+
+        A sheet built with a different column count silently packs two
+        sprites into one cell, which looks like a duplicated creature rather
+        than an error.
+        """
+        for manifest_path in sorted(ASSETS.glob("atlas_*.json")):
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            source = Image.open(ASSETS / manifest["image"])
+            columns = int(manifest["columns"])
+            rows = int(manifest["rows"])
+            cell_w = source.width // columns
+            cell_h = source.height // rows
+            output_cell = int(manifest["output_cell"])
+            if manifest.get("alpha_mode") == "opaque":
+                self.assertEqual((cell_w, cell_h), (output_cell, output_cell),
+                                 manifest_path.name)
+            else:
+                # binary atlases keep four pixels of headroom for the crop
+                self.assertEqual(cell_w, output_cell - 4, manifest_path.name)
+                self.assertEqual(cell_h, output_cell - 4, manifest_path.name)
+
     def test_every_atlas_is_strictly_one_bit(self):
-        for name in ("terrain.atlas", "units.atlas", "props.atlas", "fx.atlas"):
+        for name in ("terrain.atlas", "units.atlas", "props.atlas", "fx.atlas",
+                     "props_husk.atlas", "props_titan.atlas"):
             path = self.output / name
             self.assertTrue(path.exists(), name)
             _w, _h, _frames, _alpha, colours = _atlas_colours(path)
@@ -66,7 +93,8 @@ class TestAssetPipeline(unittest.TestCase):
         self.assertEqual(colours, {BLACK, WHITE})
 
     def test_sprite_atlases_use_binary_alpha(self):
-        for name in ("units.atlas", "props.atlas", "fx.atlas"):
+        for name in ("units.atlas", "props.atlas", "fx.atlas",
+                     "props_husk.atlas", "props_titan.atlas"):
             _w, _h, _frames, alpha_len, _colours = _atlas_colours(self.output / name)
             self.assertGreater(alpha_len, 0, name)
 

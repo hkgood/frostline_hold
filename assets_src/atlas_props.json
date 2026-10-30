@@ -1,7 +1,7 @@
 {
   "image": "props_atlas_source.png",
   "columns": 8,
-  "rows": 2,
+  "rows": 4,
   "output_cell": 36,
   "output_columns": 8,
   "alpha_mode": "binary",
@@ -31,6 +31,54 @@
       "name": "enemy_raider_3"
     },
     {
+      "name": "enemy_skitter_0"
+    },
+    {
+      "name": "enemy_skitter_1"
+    },
+    {
+      "name": "enemy_skitter_2"
+    },
+    {
+      "name": "enemy_skitter_3"
+    },
+    {
+      "name": "enemy_shaman_0"
+    },
+    {
+      "name": "enemy_shaman_1"
+    },
+    {
+      "name": "enemy_shaman_2"
+    },
+    {
+      "name": "enemy_shaman_3"
+    },
+    {
+      "name": "enemy_banner_0"
+    },
+    {
+      "name": "enemy_banner_1"
+    },
+    {
+      "name": "enemy_banner_2"
+    },
+    {
+      "name": "enemy_banner_3"
+    },
+    {
+      "name": "enemy_sap_0"
+    },
+    {
+      "name": "enemy_sap_1"
+    },
+    {
+      "name": "enemy_sap_2"
+    },
+    {
+      "name": "enemy_sap_3"
+    },
+    {
       "name": "build_pad_0"
     },
     {
@@ -55,6 +103,46 @@
         "enemy_raider_1",
         "enemy_raider_2",
         "enemy_raider_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "skitter_walk",
+      "frames": [
+        "enemy_skitter_0",
+        "enemy_skitter_1",
+        "enemy_skitter_2",
+        "enemy_skitter_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "shaman_walk",
+      "frames": [
+        "enemy_shaman_0",
+        "enemy_shaman_1",
+        "enemy_shaman_2",
+        "enemy_shaman_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "banner_walk",
+      "frames": [
+        "enemy_banner_0",
+        "enemy_banner_1",
+        "enemy_banner_2",
+        "enemy_banner_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "sap_walk",
+      "frames": [
+        "enemy_sap_0",
+        "enemy_sap_1",
+        "enemy_sap_2",
+        "enemy_sap_3"
       ],
       "frame_ticks": 5
     },

@@ -57,6 +57,16 @@ def main():
     _write("props_atlas_source.png", "atlas_props.json", canvas, frames,
            "binary", sprites.PROP_ATLAS_CELL, sprites.PROPS_ANIMATIONS)
 
+    canvas, frames = sprites.build_props_husk()
+    _write("props_husk_atlas_source.png", "atlas_props_husk.json", canvas,
+           frames, "binary", sprites.HUSK_ATLAS_CELL, sprites.HUSK_ANIMATIONS,
+           columns=4)
+
+    canvas, frames = sprites.build_props_titan()
+    _write("props_titan_atlas_source.png", "atlas_props_titan.json", canvas,
+           frames, "binary", sprites.TITAN_ATLAS_CELL,
+           sprites.TITAN_ANIMATIONS, columns=4)
+
     canvas, frames = sprites.build_fx()
     _write("fx_atlas_source.png", "atlas_fx.json", canvas, frames,
            "binary", sprites.FX_ATLAS_CELL, sprites.FX_ANIMATIONS)

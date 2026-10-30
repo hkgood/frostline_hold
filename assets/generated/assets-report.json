@@ -24,11 +24,11 @@
     },
     {
       "alpha_mode": "binary",
-      "bytes": 62388,
+      "bytes": 124852,
       "file": "props.atlas",
       "format": "msa1",
-      "frames": 10,
-      "height": 72,
+      "frames": 26,
+      "height": 144,
       "type": "atlas",
       "variants": 0,
       "width": 288
@@ -43,9 +43,31 @@
       "type": "atlas",
       "variants": 0,
       "width": 160
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 23316,
+      "file": "props_husk.atlas",
+      "format": "msa1",
+      "frames": 4,
+      "height": 44,
+      "type": "atlas",
+      "variants": 0,
+      "width": 176
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 55572,
+      "file": "props_titan.atlas",
+      "format": "msa1",
+      "frames": 4,
+      "height": 68,
+      "type": "atlas",
+      "variants": 0,
+      "width": 272
     }
   ],
   "limit_bytes": 1048576,
   "schema": "mosaico-assets-report/v1",
-  "total_bytes": 672656
+  "total_bytes": 814008
 }

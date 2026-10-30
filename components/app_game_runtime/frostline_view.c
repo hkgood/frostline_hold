@@ -21,6 +21,8 @@
 
 #define TOWER_DRAW_SIZE 48.0f
 #define ENEMY_DRAW_SIZE 32.0f
+#define HUSK_DRAW_SIZE 40.0f
+#define TITAN_DRAW_SIZE 64.0f
 #define PAD_DRAW_SIZE 24.0f
 #define PROJECTILE_DRAW_SIZE 16.0f
 #define ICON_DRAW_SIZE 16.0f
@@ -35,6 +37,10 @@ static const char *const TOWER_NAMES[3][4] = {
      "tower_siege_lv3b"},
 };
 
+/* The enemy roster, in the order the level data lists them. */
+static const char *const ENEMY_NAMES[8] = {
+    "wolf", "raider", "skitter", "husk", "shaman", "banner", "sap", "titan",
+};
 static const char *const TOWER_LABELS[3] = {"GUARD", "FROST", "SIEGE"};
 static const int TOWER_COSTS[3] = {70, 120, 160};
 
@@ -42,11 +48,12 @@ typedef struct {
     raylib_lite_atlas_t terrain;
     raylib_lite_atlas_t units;
     raylib_lite_atlas_t props;
+    raylib_lite_atlas_t props_husk;
+    raylib_lite_atlas_t props_titan;
     raylib_lite_atlas_t fx;
     raylib_lite_asset_id_t background;
     raylib_lite_asset_id_t towers[3][4];
-    raylib_lite_asset_id_t wolf[4];
-    raylib_lite_asset_id_t raider[4];
+    raylib_lite_asset_id_t enemies[8][4];
     raylib_lite_asset_id_t pads[2];
     raylib_lite_asset_id_t projectile;
     raylib_lite_asset_id_t icon_heart;
@@ -62,6 +69,8 @@ void frostline_view_init(void)
     s_assets.terrain = raylib_lite_atlas_load("terrain.atlas");
     s_assets.units = raylib_lite_atlas_load("units.atlas");
     s_assets.props = raylib_lite_atlas_load("props.atlas");
+    s_assets.props_husk = raylib_lite_atlas_load("props_husk.atlas");
+    s_assets.props_titan = raylib_lite_atlas_load("props_titan.atlas");
     s_assets.fx = raylib_lite_atlas_load("fx.atlas");
 
     s_assets.background = raylib_lite_asset_id("map_background");
@@ -71,12 +80,14 @@ void frostline_view_init(void)
                 raylib_lite_asset_id(TOWER_NAMES[kind][variant]);
         }
     }
-    for (int i = 0; i < 4; ++i) {
-        char name[32];
-        snprintf(name, sizeof(name), "enemy_wolf_%d", i);
-        s_assets.wolf[i] = raylib_lite_asset_id(name);
-        snprintf(name, sizeof(name), "enemy_raider_%d", i);
-        s_assets.raider[i] = raylib_lite_asset_id(name);
+    for (int kind = 0; kind < 8; ++kind) {
+        for (int frame = 0; frame < 4; ++frame) {
+            char name[32];
+            snprintf(name, sizeof(name), "enemy_%s_%d", ENEMY_NAMES[kind], frame);
+            s_assets.enemies[kind][frame] = raylib_lite_asset_id(name);
+            /* The frames live in different atlases; the id is the same
+             * either way, so the lookup below picks the right sheet. */
+        }
     }
     for (int i = 0; i < 2; ++i) {
         char name[32];
@@ -94,6 +105,8 @@ void frostline_view_shutdown(void)
     raylib_lite_atlas_unload(s_assets.terrain);
     raylib_lite_atlas_unload(s_assets.units);
     raylib_lite_atlas_unload(s_assets.props);
+    raylib_lite_atlas_unload(s_assets.props_husk);
+    raylib_lite_atlas_unload(s_assets.props_titan);
     raylib_lite_atlas_unload(s_assets.fx);
     memset(&s_assets, 0, sizeof(s_assets));
 }
@@ -101,7 +114,9 @@ void frostline_view_shutdown(void)
 bool frostline_view_ready(void)
 {
     return s_assets.terrain.texture.id != 0 && s_assets.units.texture.id != 0
-           && s_assets.props.texture.id != 0 && s_assets.fx.texture.id != 0;
+           && s_assets.props.texture.id != 0 && s_assets.fx.texture.id != 0
+           && s_assets.props_husk.texture.id != 0
+           && s_assets.props_titan.texture.id != 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -226,11 +241,23 @@ static void draw_enemies(const fl_state_t *model)
         if (!enemy->alive) {
             continue;
         }
-        raylib_lite_asset_id_t id = (enemy->kind == FL_ENEMY_RAIDER)
-            ? s_assets.raider[frame] : s_assets.wolf[frame];
-        float x = (float)enemy->x - ENEMY_DRAW_SIZE / 2.0f;
-        float y = (float)enemy->y - ENEMY_DRAW_SIZE + 6.0f;
-        draw_padded(s_assets.props, id, x, y, ENEMY_DRAW_SIZE);
+        int kind = (int)enemy->kind;
+        if (kind < 0 || kind > 7) {
+            continue;
+        }
+        /* The husk and the titan are drawn larger than the rank and file. */
+        float size = (kind == FL_ENEMY_TITAN) ? TITAN_DRAW_SIZE
+                   : ((kind == FL_ENEMY_HUSK) ? HUSK_DRAW_SIZE : ENEMY_DRAW_SIZE);
+        raylib_lite_asset_id_t id = s_assets.enemies[kind][frame];
+        raylib_lite_atlas_t sheet = s_assets.props;
+        if (kind == FL_ENEMY_HUSK) {
+            sheet = s_assets.props_husk;
+        } else if (kind == FL_ENEMY_TITAN) {
+            sheet = s_assets.props_titan;
+        }
+        float x = (float)enemy->x - size / 2.0f;
+        float y = (float)enemy->y - size + 6.0f;
+        draw_padded(sheet, id, x, y, size);
 
         /* Health bar: black trough, white fill. */
         float ratio = enemy->max_hp > 0.0f ? enemy->hp / enemy->max_hp : 0.0f;

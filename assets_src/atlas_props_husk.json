@@ -1,0 +1,34 @@
+{
+  "image": "props_husk_atlas_source.png",
+  "columns": 4,
+  "rows": 1,
+  "output_cell": 44,
+  "output_columns": 4,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "enemy_husk_0"
+    },
+    {
+      "name": "enemy_husk_1"
+    },
+    {
+      "name": "enemy_husk_2"
+    },
+    {
+      "name": "enemy_husk_3"
+    }
+  ],
+  "animations": [
+    {
+      "name": "husk_walk",
+      "frames": [
+        "enemy_husk_0",
+        "enemy_husk_1",
+        "enemy_husk_2",
+        "enemy_husk_3"
+      ],
+      "frame_ticks": 8
+    }
+  ]
+}

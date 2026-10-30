@@ -16,6 +16,11 @@
 #define FL_SLOW_PERCENT 70
 #define FL_BURN_TICKS 90
 #define FL_STUN_TICKS 20
+#define FL_CAST_TICKS 45      /* how often a caster acts */
+#define FL_HEAL_AMOUNT 16     /* health the shaman restores */
+#define FL_BANNER_ARMOR 10    /* armour the banner grants */
+#define FL_BANNER_TICKS 120   /* how long the banner's gift lasts */
+#define FL_SAP_LIVES 3        /* lives a sap takes out of the gate */
 #define FL_SELL_PERCENT 50
 
 /* ------------------------------------------------------------------ */
@@ -163,6 +168,10 @@ static void fl_spawn_enemy(fl_state_t *state, uint8_t kind, uint8_t lane)
         enemy->max_hp = (float)stat->hp * (float)hp_mult / 100.0f;
         enemy->hp = enemy->max_hp;
         enemy->armor = (int16_t)(stat->armor + armor_add);
+        enemy->behaviour = stat->behaviour;
+        enemy->cast_timer = 30;
+        enemy->buff_ticks = 0;
+        enemy->armor_bonus = 0;
         enemy->lane = lane;
         enemy->dist = 0.0f;
         enemy->slow_ticks = 0;
@@ -188,10 +197,11 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
     int16_t raw_damage = shot->damage;
     float damage = (float)raw_damage;
     if (!(shot->flags & FL_SHOT_PIERCE)) {
-        damage = fl_apply_armor(damage, enemy->armor);
+        damage = fl_apply_armor(damage,
+                                (int16_t)(enemy->armor + enemy->armor_bonus));
     }
     enemy->hp -= damage;
-    if (shot->slow) {
+    if (shot->slow && enemy->behaviour != FL_BEHAVIOUR_TITAN) {
         enemy->slow_ticks = FL_SLOW_TICKS;
         enemy->slow_percent = shot->slow_percent;
     }
@@ -199,7 +209,8 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
         enemy->burn_ticks = FL_BURN_TICKS;
         enemy->burn_damage = (uint16_t)(raw_damage / 3);
     }
-    if (shot->flags & FL_SHOT_STUN) {
+    if (shot->flags & FL_SHOT_STUN
+            && enemy->behaviour != FL_BEHAVIOUR_TITAN) {
         enemy->stun_ticks = FL_STUN_TICKS;
     }
     if (enemy->hp > 0.0f) {
@@ -399,6 +410,59 @@ static void fl_update_projectiles(fl_state_t *state)
     }
 }
 
+/* The shaman mends the most wounded ally beside it. */
+static void fl_heal_allies(fl_state_t *state, fl_enemy_t *caster)
+{
+    const float radius = 95.0f;
+    int best = -1;
+    float worst = 1.0f;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        fl_enemy_t *other = &state->enemies[i];
+        if (!other->alive || other == caster) {
+            continue;
+        }
+        float dx = other->x - caster->x;
+        float dy = other->y - caster->y;
+        if (dx * dx + dy * dy > radius * radius) {
+            continue;
+        }
+        if (other->max_hp <= 0.0f) {
+            continue;
+        }
+        float ratio = other->hp / other->max_hp;
+        if (ratio < worst) {
+            worst = ratio;
+            best = i;
+        }
+    }
+    if (best >= 0) {
+        fl_enemy_t *other = &state->enemies[best];
+        other->hp += (float)FL_HEAL_AMOUNT;
+        if (other->hp > other->max_hp) {
+            other->hp = other->max_hp;
+        }
+    }
+}
+
+/* The banner hardens everyone around it for a while. */
+static void fl_banner_allies(fl_state_t *state, fl_enemy_t *caster)
+{
+    const float radius = 115.0f;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        fl_enemy_t *other = &state->enemies[i];
+        if (!other->alive) {
+            continue;
+        }
+        float dx = other->x - caster->x;
+        float dy = other->y - caster->y;
+        if (dx * dx + dy * dy > radius * radius) {
+            continue;
+        }
+        other->armor_bonus = FL_BANNER_ARMOR;
+        other->buff_ticks = FL_BANNER_TICKS;
+    }
+}
+
 static void fl_update_enemies(fl_state_t *state)
 {
     for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
@@ -411,6 +475,25 @@ static void fl_update_enemies(fl_state_t *state)
         }
         if (enemy->stun_ticks > 0) {
             enemy->stun_ticks--;
+        }
+        if (enemy->buff_ticks > 0) {
+            enemy->buff_ticks--;
+            if (enemy->buff_ticks == 0) {
+                enemy->armor_bonus = 0;
+            }
+        }
+        if (enemy->behaviour == FL_BEHAVIOUR_HEALER
+                || enemy->behaviour == FL_BEHAVIOUR_BANNER) {
+            if (enemy->cast_timer > 0) {
+                enemy->cast_timer--;
+            } else {
+                enemy->cast_timer = FL_CAST_TICKS;
+                if (enemy->behaviour == FL_BEHAVIOUR_HEALER) {
+                    fl_heal_allies(state, enemy);
+                } else {
+                    fl_banner_allies(state, enemy);
+                }
+            }
         }
         if (enemy->burn_ticks > 0) {
             enemy->burn_ticks--;
@@ -443,7 +526,9 @@ static void fl_update_enemies(fl_state_t *state)
         if (enemy->dist >= g_lane_a_len) {
             enemy->alive = 0;
             state->leaks++;
-            if (state->lives > 0) {
+            uint8_t cost = (enemy->behaviour == FL_BEHAVIOUR_SAP)
+                           ? FL_SAP_LIVES : 1;
+            for (uint8_t i = 0; i < cost && state->lives > 0; ++i) {
                 state->lives--;
             }
             if (state->lives == 0) {

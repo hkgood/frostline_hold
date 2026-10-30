@@ -225,6 +225,82 @@ static void test_armour_is_a_flat_cut(void)
     assert(armoured.enemies[0].hp > plain.enemies[0].hp);
 }
 
+/* Put an enemy of a kind on the lane at a given distance along it. */
+static void place_enemy(fl_state_t *state, int index, fl_enemy_kind_t kind,
+                        float dist, float hp)
+{
+    fl_enemy_t *enemy = &state->enemies[index];
+    memset(enemy, 0, sizeof(*enemy));
+    enemy->kind = kind;
+    enemy->max_hp = hp;
+    enemy->hp = hp;
+    enemy->armor = FL_ENEMY_STATS[kind].armor;
+    enemy->behaviour = FL_ENEMY_STATS[kind].behaviour;
+    enemy->lane = 0;
+    enemy->dist = dist;
+    enemy->alive = 1;
+}
+
+static void test_the_shaman_mends_its_ally(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    place_enemy(&state, 0, FL_ENEMY_SHAMAN, 40.0f, 85.0f);
+    place_enemy(&state, 1, FL_ENEMY_WOLF, 50.0f, 40.0f);
+    state.enemies[1].hp = 10.0f;      /* badly hurt */
+    float before = state.enemies[1].hp;
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[1].hp > before);
+}
+
+static void test_the_banner_hardens_its_ally(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    place_enemy(&state, 0, FL_ENEMY_BANNERMAN, 40.0f, 110.0f);
+    place_enemy(&state, 1, FL_ENEMY_RAIDER, 50.0f, 70.0f);
+    assert(state.enemies[1].armor_bonus == 0);
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[1].armor_bonus > 0);
+}
+
+static void test_a_sap_takes_three_lives_from_the_gate(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    place_enemy(&state, 0, FL_ENEMY_SAP, 0.0f, 60.0f);
+    uint8_t lives = state.lives;
+    for (int i = 0; i < 3000 && state.lives == lives; ++i) {
+        fl_state_update(&state);
+    }
+    assert(lives - state.lives == 3);
+}
+
+static void test_the_titan_ignores_the_frost_and_the_stun(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_spawned = 4;
+    place_enemy(&state, 0, FL_ENEMY_TITAN, 40.0f, 1200.0f);
+    place_enemy(&state, 1, FL_ENEMY_WOLF, 50.0f, 40.0f);
+    for (int i = 0; i < 90; ++i) {
+        fl_state_update(&state);
+    }
+    /* A plain wolf would be slowed and stopped; the titan is not. */
+    assert(state.enemies[0].stun_ticks == 0);
+}
+
 static void test_state_hash_is_stable_for_the_same_seed(void)
 {
     fl_state_t a, b;
@@ -287,6 +363,10 @@ int main(void)
     test_upgrading_a_tower_changes_its_stats();
     test_upgrading_needs_the_gold();
     test_armour_is_a_flat_cut();
+    test_the_shaman_mends_its_ally();
+    test_the_banner_hardens_its_ally();
+    test_a_sap_takes_three_lives_from_the_gate();
+    test_the_titan_ignores_the_frost_and_the_stun();
     test_score_counts_kills_and_cleared_waves();
     test_a_leak_is_counted_and_costs_the_flawless_bonus();
     test_state_hash_is_stable_for_the_same_seed();

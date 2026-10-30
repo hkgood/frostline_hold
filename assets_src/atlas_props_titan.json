@@ -1,0 +1,34 @@
+{
+  "image": "props_titan_atlas_source.png",
+  "columns": 4,
+  "rows": 1,
+  "output_cell": 68,
+  "output_columns": 4,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "enemy_titan_0"
+    },
+    {
+      "name": "enemy_titan_1"
+    },
+    {
+      "name": "enemy_titan_2"
+    },
+    {
+      "name": "enemy_titan_3"
+    }
+  ],
+  "animations": [
+    {
+      "name": "titan_walk",
+      "frames": [
+        "enemy_titan_0",
+        "enemy_titan_1",
+        "enemy_titan_2",
+        "enemy_titan_3"
+      ],
+      "frame_ticks": 10
+    }
+  ]
+}

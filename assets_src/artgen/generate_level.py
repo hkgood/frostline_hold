@@ -66,13 +66,16 @@ static const fl_point_t FL_HERO_POSTS[FL_HERO_POST_COUNT] = {{
 {posts}
 }};
 
-/* Enemy roster: kind, hp, armor, speed in px/s, bounty, score. */
+/* Enemy roster: kind, hp, armor, speed in px/s, bounty, score, behaviour,
+ * and the pixel size of its sprite. */
 typedef struct {{
     int16_t hp;
     int16_t armor;
     int16_t speed;
     int16_t bounty;
     int16_t score;
+    uint8_t behaviour;
+    uint8_t size;
 }} fl_enemy_stat_t;
 
 static const fl_enemy_stat_t FL_ENEMY_STATS[FL_ENEMY_KIND_COUNT] = {{
@@ -149,8 +152,9 @@ def _points(points):
 
 def _enemies():
     rows = []
-    for _kind, _name, hp, armor, speed, bounty, score in geom.ENEMY_STATS:
-        rows.append("    {%d, %d, %d, %d, %d}," % (hp, armor, speed, bounty, score))
+    for _kind, _name, hp, armor, speed, bounty, score, behaviour, size in geom.ENEMY_STATS:
+        rows.append("    {%d, %d, %d, %d, %d, %d, %d},"
+                    % (hp, armor, speed, bounty, score, behaviour, size))
     return "\n".join(rows)
 
 

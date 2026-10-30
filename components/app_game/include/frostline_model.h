@@ -60,7 +60,20 @@ typedef enum {
 typedef enum {
     FL_ENEMY_WOLF = 0,
     FL_ENEMY_RAIDER = 1,
+    FL_ENEMY_SKITTER = 2,
+    FL_ENEMY_HUSK = 3,
+    FL_ENEMY_SHAMAN = 4,
+    FL_ENEMY_BANNERMAN = 5,
+    FL_ENEMY_SAP = 6,
+    FL_ENEMY_TITAN = 7,
 } fl_enemy_kind_t;
+
+/* What an enemy does beyond walking. */
+#define FL_BEHAVIOUR_PLAIN   0
+#define FL_BEHAVIOUR_HEALER  1
+#define FL_BEHAVIOUR_BANNER  2
+#define FL_BEHAVIOUR_SAP     3
+#define FL_BEHAVIOUR_TITAN   4
 
 typedef enum {
     FL_PHASE_PREP = 0,   /* countdown to the next wave */
@@ -97,6 +110,10 @@ typedef struct {
     uint16_t burn_ticks; /* remaining burn */
     uint16_t burn_damage;/* damage per second while burning */
     uint16_t stun_ticks; /* remaining stun */
+    uint16_t cast_timer; /* ticks until the next heal or banner pulse */
+    uint16_t buff_ticks; /* how long the banner's hardening lasts */
+    int16_t armor_bonus; /* armour granted by a banner */
+    uint8_t behaviour;   /* FL_BEHAVIOUR_* */
     uint8_t alive;
 } fl_enemy_t;
 
