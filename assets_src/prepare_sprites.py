@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from artgen import sprites  # noqa: E402
-from artgen.terrain import build_background  # noqa: E402
+from artgen.ai_terrain import build_background  # noqa: E402
 
 
 def _write(source_name, config_name, canvas, frames, alpha_mode, output_cell,

@@ -190,6 +190,8 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
     enemy->alive = 0;
     state->kills++;
     state->gold += (uint16_t)FL_ENEMY_STATS[enemy->kind].bounty;
+    state->score_kills += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
+    state->score += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
 }
 
 static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
@@ -339,12 +341,12 @@ static void fl_update_enemies(fl_state_t *state)
         enemy->dist += speed / 30.0f;
         if (enemy->lane == 1 && enemy->dist >= g_lane_b_len) {
             enemy->lane = 0;
-            enemy->dist = g_lane_a_cum[FL_MERGE_INDEX]
-                          + (enemy->dist - g_lane_b_len);
+            enemy->dist = FL_MERGE_DISTANCE + (enemy->dist - g_lane_b_len);
         }
         fl_lane_pos(enemy->lane, enemy->dist, &enemy->x, &enemy->y);
         if (enemy->dist >= g_lane_a_len) {
             enemy->alive = 0;
+            state->leaks++;
             if (state->lives > 0) {
                 state->lives--;
             }
@@ -389,8 +391,15 @@ static void fl_update_wave_state(fl_state_t *state)
         return;
     }
     state->gold += wave->reward;
+    state->score_waves += wave->score_bonus;
+    state->score += wave->score_bonus;
     state->wave++;
     if (state->wave > FL_WAVE_COUNT) {
+        state->score_bonus = (uint32_t)state->lives * FL_SCORE_PER_LIFE;
+        if (state->leaks == 0) {
+            state->score_bonus += FL_SCORE_FLAWLESS;
+        }
+        state->score += state->score_bonus;
         state->phase = FL_PHASE_WON;
         return;
     }
@@ -516,11 +525,9 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
     }
 
     if (state->phase == FL_PHASE_WON || state->phase == FL_PHASE_LOST) {
-        /* Tapping the middle of the screen restarts the battle. */
-        if (x > 140 && x < 340 && y > 180 && y < 300) {
-            uint32_t seed = state->seed ^ 0x9E3779B9u;
-            fl_state_reset(state, seed);
-        }
+        /* The end panel covers the screen, so any tap starts a new battle. */
+        uint32_t seed = state->seed ^ 0x9E3779B9u;
+        fl_state_reset(state, seed);
         return;
     }
 
@@ -590,6 +597,11 @@ uint32_t fl_state_hash(const fl_state_t *state)
     FL_MIX(state->tick);
     FL_MIX(state->gold);
     FL_MIX(state->lives);
+    FL_MIX(state->score);
+    FL_MIX(state->score_kills);
+    FL_MIX(state->score_waves);
+    FL_MIX(state->score_bonus);
+    FL_MIX(state->leaks);
     FL_MIX(state->wave);
     FL_MIX(state->phase);
     FL_MIX(state->kills);
@@ -622,9 +634,16 @@ int fl_state_json(const fl_state_t *state, char *output, size_t capacity)
     }
     int size = snprintf(output, capacity,
                         "{\"phase\":\"%s\",\"wave\":%u,\"gold\":%u,\"lives\":%u,"
+                        "\"score\":%lu,\"score_kills\":%lu,\"score_waves\":%lu,"
+                        "\"score_bonus\":%lu,\"leaks\":%u,"
                         "\"kills\":%lu,\"tick\":%lu,\"speed\":%u,\"state_hash\":\"%08lx\"}",
                         fl_phase_name(state), (unsigned)state->wave,
                         (unsigned)state->gold, (unsigned)state->lives,
+                        (unsigned long)state->score,
+                        (unsigned long)state->score_kills,
+                        (unsigned long)state->score_waves,
+                        (unsigned long)state->score_bonus,
+                        (unsigned)state->leaks,
                         (unsigned long)state->kills, (unsigned long)state->tick,
                         (unsigned)state->speed,
                         (unsigned long)fl_state_hash(state));

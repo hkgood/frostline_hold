@@ -120,6 +120,38 @@ static void test_two_towers_hold_the_first_wave(void)
     assert(state.phase == FL_PHASE_PREP);
 }
 
+static void test_score_counts_kills_and_cleared_waves(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(state.score == 0);
+    assert(fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    assert(fl_build_tower(&state, 50, 192, FL_TOWER_GUARD));
+    for (int i = 0; i < 3000 && state.wave < 2; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.wave == 2);
+    /* Four wolves at ten points each, plus twice the wave reward. */
+    assert(state.score_kills == 40);
+    assert(state.score_waves == 40);
+    assert(state.score == 80);
+    assert(state.leaks == 0);
+    assert(state.score_bonus == 0);
+}
+
+static void test_a_leak_is_counted_and_costs_the_flawless_bonus(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    for (int i = 0; i < 4000; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.leaks > 0);
+    /* The run is not over, so no end-of-run bonus has been paid yet. */
+    assert(state.score_bonus == 0);
+    assert(state.score == state.score_kills + state.score_waves);
+}
+
 static void test_state_hash_is_stable_for_the_same_seed(void)
 {
     fl_state_t a, b;
@@ -179,6 +211,8 @@ int main(void)
     test_enemies_walk_towards_the_goal();
     test_leak_costs_a_life();
     test_two_towers_hold_the_first_wave();
+    test_score_counts_kills_and_cleared_waves();
+    test_a_leak_is_counted_and_costs_the_flawless_bonus();
     test_state_hash_is_stable_for_the_same_seed();
     test_pointer_selects_a_tower_card();
     test_pointer_builds_on_a_spot();

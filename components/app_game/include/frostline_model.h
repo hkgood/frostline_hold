@@ -99,6 +99,11 @@ typedef struct {
 typedef struct {
     uint16_t gold;
     uint8_t lives;
+    uint32_t score;       /* points, running total */
+    uint32_t score_kills; /* points earned by killing enemies */
+    uint32_t score_waves; /* points earned by clearing waves */
+    uint32_t score_bonus; /* end-of-run bonuses: remaining lives, no leaks */
+    uint16_t leaks;       /* enemies that reached the gate */
     uint8_t wave;          /* 1-based; FL_WAVE_COUNT + 1 means finished */
     uint8_t phase;
     uint8_t speed;         /* 1, 2 or 3 */
@@ -143,6 +148,13 @@ bool fl_sell_tower(fl_state_t *state, int index);
 uint32_t fl_state_hash(const fl_state_t *state);
 int fl_state_json(const fl_state_t *state, char *output, size_t capacity);
 const char *fl_phase_name(const fl_state_t *state);
+
+/* --- score ------------------------------------------------------------ */
+/* Points awarded per kill and per cleared wave come from the level data.
+ * The end-of-run bonus pays for the lives still standing and, when nothing
+ * ever reached the gate, a flawless bonus. */
+#define FL_SCORE_PER_LIFE 100
+#define FL_SCORE_FLAWLESS 1000
 
 #ifdef __cplusplus
 }

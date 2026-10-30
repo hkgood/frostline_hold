@@ -1,257 +1,163 @@
 """Snowfield background generator.
 
-The reference look is built from hard-edged regions, not soft gradients:
-  1. clean white snow base
-  2. irregular tilled patches, ordered-dither filled with crisp boundaries
-  3. snow tracks that scour through the patches
-  4. the eastern cliff as a dithered wall with a hard black lip
-  5. conifer stands, crags, bushes, stones, stumps and fence posts
-  6. the two roads with dark shoulders
-  7. the gatehouse at the goal
+Built the way the reference art is built: hard-edged regions of worked
+ground, contour lines for slopes, hatched rock faces and a ridge of hatched
+mountains. Nothing is a soft blob of dots.
 
-Everything is strictly black and white; tone comes only from Bayer dithering.
+Layer order (back to front):
+  1. clean white snow base
+  2. tilled plots with ploughed rows
+  3. contour-lined slopes
+  4. the eastern cliff, a hatched rock face
+  5. the northern ridge, hatched shadow faces
+  6. conifer stands
+  7. scattered boulders, bushes, stumps and drifts
+  8. the two roads
+  9. buildings, cairns, fences and the gatehouse
 """
+import math
 import random
 
-from artgen.canvas import (BLACK, WHITE, Canvas, dither_polygon, dither_rect)
+from artgen.canvas import (BLACK, WHITE, Canvas, fill_polygon, hatch_polygon,
+                           outline_polygon, point_in_polygon)
 from artgen import level_geom as geom
+from artgen import objects as O
 
 ROAD_WIDTH_A = 15
 ROAD_WIDTH_B = 11
-TREE_MIN_ROAD_CLEARANCE = 15
-TREE_MIN_SPOT_CLEARANCE = 14
 
-# Tilled snow patches: angular polygons with hard boundaries.
-# Kept few on purpose: the battlefield must stay readable under the units.
-# (vertices, density, dither offset, furrow lines)
-PATCHES = [
-    ([(24, 52), (104, 48), (118, 76), (96, 104), (24, 94)],
-     0.26, (0, 0), [((30, 66), (108, 60)), ((32, 82), (104, 76))]),
-    ([(352, 56), (424, 52), (452, 82), (440, 124), (352, 128)],
-     0.28, (1, 7), [((358, 76), (442, 72)), ((358, 98), (446, 94))]),
-    ([(18, 234), (64, 228), (74, 262), (52, 296), (18, 286)],
-     0.24, (4, 1), [((24, 250), (66, 246))]),
+# Tilled plots: (vertices, row spacing, arc amount).
+PLOTS = [
+    ([(18, 52), (108, 46), (126, 74), (104, 104), (36, 100), (16, 76)], 6, 0.16),
+    ([(196, 50), (268, 46), (286, 72), (262, 100), (206, 96)], 6, -0.14),
+    ([(16, 236), (64, 228), (78, 262), (52, 300), (14, 288)], 5, 0.18),
+    ([(330, 330), (398, 322), (414, 352), (388, 382), (330, 378)], 6, -0.15),
+    ([(120, 296), (190, 288), (206, 316), (176, 346), (122, 340)], 6, 0.12),
 ]
 
-# Tracks that cut through the tilled patches.
-TRACKS = [
-    (34, 60, 96, 106, 12),
-    (160, 58, 240, 96, 10),
-    (272, 176, 344, 210, 11),
-    (398, 176, 438, 218, 9),
+# Rounded slopes drawn as contour rings: (cx, cy, rx, ry, rings).
+HILLS = [
+    (250, 352, 62, 40, 6),
+    (386, 176, 52, 34, 5),
+    (86, 330, 48, 32, 5),
+    (300, 210, 40, 26, 4),
 ]
 
-# Cliff wall: a dithered band on the eastern edge with a hard black lip.
-CLIFF_POLY = [(424, 44), (480, 44), (480, 268), (438, 258), (416, 186),
-              (424, 118)]
-CLIFF_LIP = [(424, 44), (416, 118), (424, 186), (414, 252), (438, 258)]
+CLIFF_POLY = [(424, 44), (480, 44), (480, 272), (438, 262), (414, 190),
+              (426, 116)]
+
+RIDGE = [(0, 0), (26, 0), (46, 28), (64, 0), (98, 0), (118, 42), (140, 0),
+         (178, 0), (198, 26), (216, 0), (252, 0), (270, 38), (292, 0),
+         (332, 0), (348, 24), (364, 0), (402, 0), (422, 32), (442, 0),
+         (480, 0)]
+
+# Conifer stands: (x0, y0, x1, y1, density).
+STANDS = [
+    (6, 186, 126, 410, 1 / 520),
+    (140, 50, 268, 118, 1 / 620),
+    (242, 330, 438, 404, 1 / 560),
+    (352, 50, 476, 126, 1 / 640),
+    (186, 176, 236, 214, 1 / 700),
+]
 
 
-def _draw_conifer(canvas, x, y, height, layers=4):
-    """A snow-laden spruce: black silhouette with white snow shelves."""
-    trunk = max(2, height // 11)
-    canvas.fill_rect(x - trunk // 2, y - trunk, trunk, trunk, BLACK)
-    for index in range(layers):
-        t = index / (layers - 1.0) if layers > 1 else 0.0
-        half = max(2, int(height * (0.45 - 0.31 * t)))
-        top = y - height + int(height * 0.26 * index)
-        bottom = top + int(height * 0.36)
-        canvas.triangle(x, top, x - half, bottom, x + half, bottom, BLACK)
-        shelf = max(1, int(half * 0.55))
-        shelf_top = bottom - max(2, int(height * 0.17))
-        canvas.triangle(x, shelf_top, x - shelf, bottom, x + shelf, bottom, WHITE)
-    canvas.fill_rect(x - 1, y - height, 2, max(1, height // 8), BLACK)
+# ----------------------------------------------------------------------
+# Landforms
+# ----------------------------------------------------------------------
+
+def _draw_plots(canvas):
+    """Tilled ground: ploughed rows inside hard-edged plots."""
+    for vertices, spacing, curve in PLOTS:
+        fill_polygon(canvas, vertices, WHITE)
+        O.furrow_field(canvas, vertices, spacing, BLACK, curve=curve)
+        outline_polygon(canvas, vertices, BLACK, 1)
 
 
-def _draw_bush(canvas, x, y, size):
-    """Low shrub: overlapping black lobes with a snow highlight."""
-    canvas.disc(x, y, size, BLACK)
-    canvas.disc(x - size // 2, y, size // 2, BLACK)
-    canvas.disc(x + size // 2, y - 1, size // 2, BLACK)
-    canvas.disc(x - size // 3, y - size // 3, max(1, size // 4), WHITE)
+def _draw_hills(canvas):
+    """Slopes described by contour rings."""
+    for cx, cy, rx, ry, rings in HILLS:
+        O.contour_hill(canvas, cx, cy, rx, ry, rings, BLACK)
 
 
-def _draw_stump(canvas, x, y, size):
-    canvas.fill_rect(x - size, y - size, size * 2, size, BLACK)
-    canvas.fill_rect(x - size + 2, y - size + 1, size * 2 - 4, 2, WHITE)
+def _draw_cliff(canvas):
+    """Eastern cliff: rock face with striations, cracks and a heavy lip."""
+    fill_polygon(canvas, CLIFF_POLY, WHITE)
+    hatch_polygon(canvas, CLIFF_POLY, 74.0, 9.0, BLACK, offset=2.0)
 
+    # Horizontal strata across the rock face.
+    strata = random.Random(0x57A7A)
+    for _ in range(9):
+        sy = strata.randint(50, 250)
+        sx = strata.randint(424, 452)
+        canvas.line(sx, sy, strata.randint(458, 478),
+                    sy + strata.randint(-4, 4), BLACK)
 
-def _draw_rock(canvas, x, y, size):
-    """Solid boulder with a small snow highlight, never a hollow ring."""
-    canvas.disc(x, y, size, BLACK)
-    canvas.disc(x - size // 3, y - size // 3, max(1, size // 4), WHITE)
+    # Vertical rock striations.
+    rng = random.Random(0xC11FF)
+    for _ in range(18):
+        sx = rng.randint(422, 476)
+        sy = rng.randint(48, 258)
+        length = rng.randint(5, 16)
+        canvas.line(sx, sy, sx + rng.randint(-2, 2), sy + length, BLACK)
 
+    # Fractures across the face.
+    for cx, cy in ((438, 88), (456, 140), (432, 196), (462, 230)):
+        canvas.line(cx - 6, cy, cx + 3, cy + 12, BLACK)
+        canvas.line(cx + 3, cy + 12, cx - 2, cy + 21, BLACK)
+        canvas.line(cx + 3, cy + 12, cx + 9, cy + 20, BLACK)
 
-def _draw_stone(canvas, x, y):
-    canvas.fill_rect(x, y, 2, 2, BLACK)
-
-
-def _draw_snowdrift(canvas, x, y, width, height):
-    """Wind drift: a white mound shadowed only along its lower edge."""
-    canvas.ellipse(x, y, width, height, WHITE)
-    for offset in range(-width + 2, width - 2, 2):
-        lift = int(height * (1.0 - (offset / float(width)) ** 2) ** 0.5)
-        if lift <= 0:
-            continue
-        canvas.set(x + offset, y + lift, BLACK)
-        canvas.set(x + offset + 1, y + lift, BLACK)
-
-
-def _draw_fence(canvas, points):
-    """Short post-and-rail fence, used to edge the road near the gate."""
-    for index in range(len(points) - 1):
-        x0, y0 = points[index]
-        x1, y1 = points[index + 1]
-        canvas.thick_line(x0, y0, x1, y1, 2, BLACK)
-    for px, py in points:
-        canvas.fill_rect(px - 1, py - 7, 2, 8, BLACK)
-
-
-def _draw_road(canvas, points, width):
-    """Snow road: white body with a thin dark shoulder so it reads on the field."""
-    canvas.polyline(points, width + 6, BLACK)
-    canvas.polyline(points, width + 2, WHITE)
-    canvas.polyline(points, width, WHITE)
-
-
-def _draw_crags(canvas):
-    """A broken rock outcrop along the northern wall."""
-    base = 62
-    for cx, half, height in ((194, 18, 25), (206, 9, 13), (222, 14, 19),
-                              (238, 8, 11), (252, 15, 22), (270, 10, 14)):
-        canvas.triangle(cx, base - height, cx - half, base + 2, cx + half, base + 2,
-                        BLACK)
-        canvas.triangle(cx, base - height + 6, cx - half // 2, base - 2,
-                        cx + half // 2, base - 2, WHITE)
-
-
-def _draw_cairn(canvas, x, y, height):
-    """Waymarker cairn: stacked stones narrowing toward the top."""
-    stones = max(3, height // 7)
-    for index in range(stones):
-        t = index / float(max(1, stones - 1))
-        half = max(2, int(5 - 3 * t))
-        top = y - int(height * (index + 1) / stones)
-        bottom = y - int(height * index / stones)
-        canvas.ellipse(x, (top + bottom) // 2, half, max(1, (bottom - top) // 2), BLACK)
-        canvas.ellipse(x - 1, (top + bottom) // 2 - 1, max(1, half - 2),
-                       max(1, (bottom - top) // 2 - 1), WHITE)
-
-
-def _draw_bridge(canvas, x, y, span):
-    """Stone bridge carrying the road across a crevasse."""
-    canvas.fill_rect(x - span, y - 9, span * 2, 5, BLACK)
-    canvas.fill_rect(x - span, y - 4, span * 2, 4, WHITE)
-    for pier in (-span // 2, span // 2):
-        canvas.fill_rect(x + pier - 3, y, 6, 13, BLACK)
-        canvas.fill_rect(x + pier - 2, y + 1, 4, 12, WHITE)
-    for offset in range(-span, span, 8):
-        canvas.fill_rect(x + offset, y - 3, 1, 3, BLACK)
-    canvas.thick_line(x - span - 4, y + 13, x - span, y + 2, 2, BLACK)
-    canvas.thick_line(x + span + 4, y + 13, x + span, y + 2, 2, BLACK)
-
-
-def _draw_watchtower(canvas, x, y):
-    """Ruined stone watchtower on the northern ridge."""
-    canvas.fill_rect(x - 13, y - 44, 26, 44, BLACK)
-    canvas.fill_rect(x - 10, y - 41, 20, 41, WHITE)
-    for row in range(y - 40, y - 2, 8):
-        canvas.fill_rect(x - 10, row, 20, 1, BLACK)
-    canvas.fill_rect(x - 6, y - 22, 12, 22, BLACK)
-    for offset in range(-13, 13, 6):
-        canvas.fill_rect(x + offset, y - 50, 4, 7, BLACK)
-    canvas.triangle(x - 16, y - 48, x + 16, y - 48, x, y - 62, BLACK)
-    canvas.triangle(x - 11, y - 49, x + 11, y - 49, x, y - 58, WHITE)
-
-
-def _draw_tent(canvas, x, y):
-    """Campaign tent: a small triangle with a dark doorway."""
-    canvas.triangle(x, y - 20, x - 12, y, x + 12, y, BLACK)
-    canvas.triangle(x, y - 16, x - 8, y, x + 8, y, WHITE)
-    canvas.fill_rect(x - 3, y - 9, 6, 9, BLACK)
-
-
-def _draw_well(canvas, x, y):
-    """Frozen well with a little roof."""
-    canvas.ellipse(x, y, 9, 6, BLACK)
-    canvas.ellipse(x, y - 1, 6, 4, WHITE)
-    canvas.fill_rect(x - 8, y - 18, 3, 18, BLACK)
-    canvas.fill_rect(x + 5, y - 18, 3, 18, BLACK)
-    canvas.triangle(x - 12, y - 18, x + 12, y - 18, x, y - 27, BLACK)
-    canvas.triangle(x - 8, y - 18, x + 8, y - 18, x, y - 24, WHITE)
+    outline_polygon(canvas, CLIFF_POLY, BLACK, 2)
 
 
 def _draw_ridge(canvas):
-    """Mountain ridge in line art: crest outline plus hatched shadow faces.
-
-    The HUD covers the top 44px, so the ridge sits low enough for its peaks
-    to stay visible. Peaks are drawn as white snow faces, not solid black.
-    """
-    base = 92
-    ridge = [(0, 0), (26, 0), (44, 26), (62, 0), (96, 0), (116, 40),
-             (138, 0), (176, 0), (196, 24), (214, 0), (250, 0), (268, 36),
-             (290, 0), (330, 0), (346, 22), (362, 0), (400, 0), (420, 30),
-             (440, 0), (480, 0)]
-    crest = [(x, base - height) for x, height in ridge]
-    canvas.polyline(crest, 3, BLACK)
-
-    for index in range(1, len(ridge) - 1, 2):
-        cx, height = ridge[index]
+    """Northern ridge: outline plus hatched shadow faces."""
+    base = 94
+    crest = [(x, base - height) for x, height in RIDGE]
+    for index in range(1, len(RIDGE) - 1, 2):
+        cx, height = RIDGE[index]
         if height <= 0:
             continue
-        right_x = ridge[index + 1][0]
-        steps = max(3, (right_x - cx) // 12)
+        right_x = RIDGE[index + 1][0]
+        steps = max(3, (right_x - cx) // 10)
         for step in range(1, steps):
             t = step / float(steps)
             sx = cx + (right_x - cx) * t
             sy = base - height + height * t
-            canvas.line(sx, sy, sx + 7, sy + 7, BLACK)
-            canvas.line(sx + 1, sy + 5, sx + 5, sy + 9, BLACK)
+            canvas.line(sx, sy, sx + 6, sy + 6, BLACK)
+            canvas.line(sx + 1, sy + 4, sx + 4, sy + 7, BLACK)
+    for index in range(len(crest) - 1):
+        x0, y0 = crest[index]
+        x1, y1 = crest[index + 1]
+        canvas.thick_line(x0, y0, x1, y1, 3, BLACK)
+    # A bright snow shoulder just under the crest.
+    for index in range(len(crest) - 1):
+        x0, y0 = crest[index]
+        x1, y1 = crest[index + 1]
+        canvas.thick_line(x0, y0 + 5, x1, y1 + 5, 2, WHITE)
 
 
-def _draw_cliff(canvas):
-    dither_polygon(canvas, CLIFF_POLY, 0.42, offset=(4, 4))
-    canvas.polyline(CLIFF_LIP, 3, BLACK)
-    for cx, cy in ((438, 92), (452, 140), (436, 196)):
-        canvas.line(cx - 6, cy, cx + 4, cy + 12, BLACK)
-        canvas.line(cx + 4, cy + 12, cx - 2, cy + 20, BLACK)
-        canvas.line(cx - 2, cy + 20, cx + 2, cy + 26, BLACK)
+# ----------------------------------------------------------------------
+# Scatter
+# ----------------------------------------------------------------------
 
-
-def _draw_gatehouse(canvas):
-    """Stone gate at the goal: two towers, an arch mouth and a crenellated top."""
-    gx, gy = geom.GOAL
-    left, right = gx - 28, gx + 12
-    base = gy + 14
-    canvas.fill_rect(left, base - 34, 13, 34, BLACK)
-    canvas.fill_rect(right - 13, base - 34, 13, 34, BLACK)
-    canvas.fill_rect(gx - 7, base - 26, 14, 26, BLACK)
-    canvas.fill_rect(left, base - 41, right - left, 8, BLACK)
-    for row in range(base - 30, base, 7):
-        canvas.fill_rect(left + 2, row, 9, 2, WHITE)
-        canvas.fill_rect(right - 11, row, 9, 2, WHITE)
-    for x in range(left + 1, right - 2, 6):
-        canvas.fill_rect(x, base - 45, 3, 5, BLACK)
-    canvas.fill_rect(gx - 5, base - 24, 10, 24, WHITE)
-    canvas.fill_rect(gx - 4, base - 23, 8, 23, BLACK)
-
-
-def _scatter_decor(canvas, rng):
-    for x0, y0, x1, y1 in geom.FOREST_ZONES:
+def _draw_stands(canvas, rng):
+    """Dense conifer stands with soft, overlapping edges."""
+    for x0, y0, x1, y1, density in STANDS:
         area = (x1 - x0) * (y1 - y0)
-        for _ in range(max(1, area // 900)):
-            fx = rng.randint(x0, x1)
-            fy = rng.randint(y0, y1)
-            if geom.distance_to_paths(fx, fy) < TREE_MIN_ROAD_CLEARANCE:
+        for _ in range(max(1, int(area * density))):
+            fx = rng.randint(x0 - 6, x1 + 6)
+            fy = rng.randint(y0 - 4, y1 + 4)
+            if geom.distance_to_paths(fx, fy) < 16:
                 continue
-            if geom.distance_to_spots(fx, fy) < TREE_MIN_SPOT_CLEARANCE:
+            if geom.distance_to_spots(fx, fy) < 15:
                 continue
-            height = rng.randint(20, 40)
-            layers = rng.choice((3, 4, 4, 5))
-            _draw_conifer(canvas, fx, fy, height, layers)
+            O.conifer(canvas, fx, fy, rng.randint(22, 40),
+                      rng.randint(0, 9999), tiers=rng.choice((4, 5, 5, 6)))
 
+
+def _draw_scatter(canvas, rng):
     placed, attempts = 0, 0
-    while placed < 18 and attempts < 500:
+    while placed < 22 and attempts < 600:
         attempts += 1
         rx = rng.randint(8, 470)
         ry = rng.randint(geom.PLAY_TOP + 6, 405)
@@ -259,82 +165,151 @@ def _scatter_decor(canvas, rng):
             continue
         if geom.distance_to_spots(rx, ry) < 12:
             continue
-        _draw_rock(canvas, rx, ry, rng.randint(4, 8))
+        O.boulder(canvas, rx, ry, rng.randint(5, 13), rng.randint(0, 9999))
         placed += 1
 
     bushes, attempts = 0, 0
-    while bushes < 14 and attempts < 500:
+    while bushes < 16 and attempts < 600:
         attempts += 1
         bx = rng.randint(10, 468)
         by = rng.randint(geom.PLAY_TOP + 8, 404)
-        if geom.distance_to_paths(bx, by) < 16:
+        if geom.distance_to_paths(bx, by) < 15:
             continue
-        if geom.distance_to_spots(bx, by) < 14:
+        if geom.distance_to_spots(bx, by) < 13:
             continue
-        _draw_bush(canvas, bx, by, rng.randint(3, 5))
+        O.bush(canvas, bx, by, rng.randint(4, 6), rng.randint(0, 9999))
         bushes += 1
 
     for _ in range(6):
         sx = rng.randint(24, 452)
         sy = rng.randint(geom.PLAY_TOP + 12, 400)
-        if geom.distance_to_paths(sx, sy) < 18:
+        if geom.distance_to_paths(sx, sy) < 17:
             continue
-        _draw_stump(canvas, sx, sy, rng.randint(2, 4))
+        O.stump(canvas, sx, sy, rng.randint(3, 5))
 
-    for _ in range(40):
+    for _ in range(7):
+        dx = rng.randint(20, 460)
+        dy = rng.randint(geom.PLAY_TOP + 10, 400)
+        if geom.distance_to_paths(dx, dy) < 19:
+            continue
+        O.snowdrift(canvas, dx, dy, rng.randint(11, 17), rng.randint(5, 8))
+
+    for _ in range(58):
         sx = rng.randint(6, 472)
         sy = rng.randint(geom.PLAY_TOP + 4, 408)
         if geom.distance_to_paths(sx, sy) < 11:
             continue
-        _draw_stone(canvas, sx, sy)
+        canvas.fill_rect(sx, sy, 2, 2, BLACK)
 
-    for _ in range(6):
-        dx = rng.randint(20, 460)
-        dy = rng.randint(geom.PLAY_TOP + 10, 400)
-        if geom.distance_to_paths(dx, dy) < 20:
+    # Grass tufts and pebbles keep the open snow from reading as empty paper.
+    for _ in range(150):
+        sx = rng.randint(4, 476)
+        sy = rng.randint(geom.PLAY_TOP + 2, 410)
+        if geom.distance_to_paths(sx, sy) < 13:
             continue
-        _draw_snowdrift(canvas, dx, dy, rng.randint(10, 16), rng.randint(4, 7))
+        if rng.random() < 0.45:
+            canvas.fill_rect(sx, sy, 2, 2, BLACK)
+        else:
+            canvas.line(sx, sy, sx, sy - 3, BLACK)
+            canvas.line(sx, sy, sx + 1, sy - 4, BLACK)
 
-    for _ in range(10):
-        cx = rng.randint(20, 456)
-        cy = rng.randint(geom.PLAY_TOP + 10, 400)
-        if geom.distance_to_paths(cx, cy) < 15:
+
+# ----------------------------------------------------------------------
+# Road
+# ----------------------------------------------------------------------
+
+def _draw_road(canvas, points, width, rng):
+    """A trodden snow road: dark shoulder, packed body, two cart ruts."""
+    canvas.polyline(points, width + 5, BLACK)
+    canvas.polyline(points, width + 2, WHITE)
+    canvas.polyline(points, width, WHITE)
+
+    # Two continuous ruts, slightly off centre.
+    for side in (-1, 1):
+        offset = width * 0.22 * side
+        for index in range(len(points) - 1):
+            x0, y0 = points[index]
+            x1, y1 = points[index + 1]
+            length = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+            if length <= 0:
+                continue
+            dx = (x1 - x0) / length
+            dy = (y1 - y0) / length
+            nx, ny = -dy, dx
+            canvas.line(x0 + nx * offset, y0 + ny * offset,
+                        x1 + nx * offset, y1 + ny * offset, BLACK)
+
+    # Sparse snow lumps breaking the shoulder line.
+    for index in range(len(points) - 1):
+        x0, y0 = points[index]
+        x1, y1 = points[index + 1]
+        length = int(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5)
+        if length <= 0:
             continue
-        x, y = cx, cy
-        for _ in range(rng.randint(2, 4)):
-            nx = x + rng.randint(-9, 9)
-            ny = y + rng.randint(-7, 7)
-            canvas.line(x, y, nx, ny, BLACK)
-            x, y = nx, ny
+        dx = (x1 - x0) / float(length)
+        dy = (y1 - y0) / float(length)
+        nx, ny = -dy, dx
+        for step in range(6, length - 6, 17):
+            px = x0 + dx * step
+            py = y0 + dy * step
+            side = 1 if rng.random() < 0.5 else -1
+            canvas.disc(px + nx * side * (width / 2 + 3),
+                        py + ny * side * (width / 2 + 3), 2, BLACK)
+
+
+# ----------------------------------------------------------------------
+# Buildings
+# ----------------------------------------------------------------------
+
+def _draw_gatehouse(canvas):
+    """The goal: a walled gate with two towers."""
+    gx, gy = geom.GOAL
+    left, right = gx - 30, gx + 14
+    base = gy + 16
+
+    # Curtain wall.
+    O._stone_wall(canvas, left + 11, base - 26, right - left - 22, 26, course=6)
+    # Towers.
+    for tx in (left, right - 13):
+        O._stone_wall(canvas, tx, base - 40, 13, 40, course=5)
+        for offset in range(0, 13, 5):
+            canvas.fill_rect(tx + offset, base - 46, 3, 6, BLACK)
+    # Arch mouth.
+    canvas.fill_rect(gx - 7, base - 26, 14, 26, BLACK)
+    canvas.fill_rect(gx - 5, base - 24, 10, 24, WHITE)
+    canvas.ellipse(gx, base - 24, 7, 5, WHITE)
+    # Banner.
+    canvas.fill_rect(gx + 1, base - 46, 2, 16, BLACK)
+    canvas.fill_rect(gx + 3, base - 45, 9, 6, BLACK)
 
 
 def build_background():
     canvas = Canvas(geom.VIEW_WIDTH, geom.VIEW_HEIGHT)
     canvas.fill_rect(0, 0, geom.VIEW_WIDTH, geom.VIEW_HEIGHT, WHITE)
 
-    # Tilled patches: hard-edged regions of ordered dither.
-    for vertices, density, offset, furrows in PATCHES:
-        dither_polygon(canvas, vertices, density, offset=offset)
-        for (x0, y0), (x1, y1) in furrows:
-            canvas.thick_line(x0, y0, x1, y1, 2, WHITE)
-
-    # Tracks scour white through the patches.
-    for x0, y0, x1, y1, width in TRACKS:
-        canvas.thick_line(x0, y0, x1, y1, width, WHITE)
-
-    _draw_ridge(canvas)
+    _draw_plots(canvas)
+    _draw_hills(canvas)
     _draw_cliff(canvas)
-    _draw_watchtower(canvas, 132, 96)
-    _draw_well(canvas, 84, 330)
-    _draw_tent(canvas, 96, 128)
-    _draw_tent(canvas, 348, 372)
-    _scatter_decor(canvas, rng=random.Random(0x5EED))
+    _draw_ridge(canvas)
 
-    _draw_road(canvas, geom.PATH_LANE_A, ROAD_WIDTH_A)
-    _draw_road(canvas, geom.PATH_LANE_B, ROAD_WIDTH_B)
-    _draw_bridge(canvas, 150, 214, 26)
-    for cx, cy in ((18, 122), (96, 150), (204, 268), (264, 320), (348, 366)):
-        _draw_cairn(canvas, cx + 16, cy + 12, 16)
-    _draw_fence(canvas, [(356, 344), (372, 340), (388, 336)])
+    rng = random.Random(0x5EED)
+    _draw_stands(canvas, rng)
+    _draw_scatter(canvas, rng)
+
+    _draw_road(canvas, geom.PATH_LANE_A, ROAD_WIDTH_A, rng)
+    _draw_road(canvas, geom.PATH_LANE_B, ROAD_WIDTH_B, rng)
+
+    # Structures along the route.
+    O.watchtower(canvas, 132, 98, 52)
+    O.hut(canvas, 92, 322, 24, 16)
+    O.hut(canvas, 420, 120, 20, 14)
+    O.well(canvas, 74, 196)
+    O.tented_camp(canvas, 404, 336)
+    O.cairn(canvas, 36, 122, 16)
+    O.cairn(canvas, 244, 242, 15)
+    O.cairn(canvas, 366, 344, 15)
+    O.bridge(canvas, 150, 214, 26)
+    O.fence(canvas, [(300, 380), (316, 376), (332, 372)])
+    O.fence(canvas, [(66, 262), (80, 268), (94, 274)])
     _draw_gatehouse(canvas)
     return canvas

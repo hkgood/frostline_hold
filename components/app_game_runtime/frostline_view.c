@@ -47,6 +47,7 @@ typedef struct {
     raylib_lite_asset_id_t projectile;
     raylib_lite_asset_id_t icon_heart;
     raylib_lite_asset_id_t icon_coin;
+    raylib_lite_asset_id_t icon_score;
 } view_assets_t;
 
 static view_assets_t s_assets;
@@ -78,6 +79,7 @@ void frostline_view_init(void)
     s_assets.projectile = raylib_lite_asset_id("projectile_0_0");
     s_assets.icon_heart = raylib_lite_asset_id("icon_heart");
     s_assets.icon_coin = raylib_lite_asset_id("icon_coin");
+    s_assets.icon_score = raylib_lite_asset_id("icon_score");
 }
 
 void frostline_view_shutdown(void)
@@ -250,13 +252,18 @@ static void draw_hud(const fl_state_t *model)
     DrawRectangle(8, 12, 20, 20, WHITE);
     draw_padded(s_assets.fx, s_assets.icon_heart, 10.0f, 14.0f, ICON_DRAW_SIZE);
     DrawText(TextFormat("%u", (unsigned)model->lives), 32, 10, 16, WHITE);
-    DrawRectangle(72, 12, 20, 20, WHITE);
-    draw_padded(s_assets.fx, s_assets.icon_coin, 74.0f, 14.0f, ICON_DRAW_SIZE);
-    DrawText(TextFormat("%u", (unsigned)model->gold), 96, 10, 16, WHITE);
+    DrawRectangle(68, 12, 20, 20, WHITE);
+    draw_padded(s_assets.fx, s_assets.icon_coin, 70.0f, 14.0f, ICON_DRAW_SIZE);
+    DrawText(TextFormat("%u", (unsigned)model->gold), 92, 10, 16, WHITE);
 
-    DrawText("WAVE", 150, 6, 12, WHITE);
+    /* Points read as a third resource so the run has a running tally. */
+    DrawRectangle(140, 12, 20, 20, WHITE);
+    draw_padded(s_assets.fx, s_assets.icon_score, 142.0f, 14.0f, ICON_DRAW_SIZE);
+    DrawText(TextFormat("%lu", (unsigned long)model->score), 164, 10, 16, WHITE);
+
+    DrawText("WAVE", 228, 6, 12, WHITE);
     DrawText(TextFormat("%02u/%02d", (unsigned)model->wave, FL_WAVE_COUNT),
-             150, 22, 16, WHITE);
+             228, 22, 16, WHITE);
 
     /* Pause and speed buttons. */
     draw_panel(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H, false);
@@ -311,13 +318,31 @@ static void draw_overlay(const fl_state_t *model)
         return;
     }
     DrawRectangle(0, 0, FL_VIEW_WIDTH, FL_VIEW_HEIGHT, BLACK);
-    const char *title = model->phase == FL_PHASE_WON ? "HOLD SECURED" : "THE GATE FALLS";
-    draw_text_centered(title, FL_VIEW_WIDTH / 2, 180, 28, WHITE);
-    draw_text_centered("TAP TO FIGHT AGAIN", FL_VIEW_WIDTH / 2, 230, 14, WHITE);
-    draw_text_centered(TextFormat("WAVE %02u   LIVES %02u   KILLS %u",
-                                  (unsigned)model->wave, (unsigned)model->lives,
-                                  (unsigned)model->kills),
-                       FL_VIEW_WIDTH / 2, 260, 14, WHITE);
+    bool won = model->phase == FL_PHASE_WON;
+    const char *title = won ? "HOLD SECURED" : "THE GATE FALLS";
+    draw_text_centered(title, FL_VIEW_WIDTH / 2, 120, 28, WHITE);
+
+    /* The points total, with the breakdown underneath it. */
+    draw_text_centered("SCORE", FL_VIEW_WIDTH / 2, 172, 14, WHITE);
+    draw_text_centered(TextFormat("%lu", (unsigned long)model->score),
+                       FL_VIEW_WIDTH / 2, 192, 32, WHITE);
+
+    draw_text_centered(TextFormat("KILLS %u      WAVE BONUS %lu",
+                                  (unsigned)model->kills,
+                                  (unsigned long)model->score_waves),
+                       FL_VIEW_WIDTH / 2, 244, 14, WHITE);
+    draw_text_centered(TextFormat("LIVES %u      BONUS %lu",
+                                  (unsigned)model->lives,
+                                  (unsigned long)model->score_bonus),
+                       FL_VIEW_WIDTH / 2, 266, 14, WHITE);
+    /* The wave counter steps past the last wave once the run is won. */
+    unsigned shown_wave = (unsigned)model->wave;
+    if (shown_wave > (unsigned)FL_WAVE_COUNT) {
+        shown_wave = (unsigned)FL_WAVE_COUNT;
+    }
+    draw_text_centered(TextFormat("WAVE %02u/%02d", shown_wave, FL_WAVE_COUNT),
+                       FL_VIEW_WIDTH / 2, 296, 14, WHITE);
+    draw_text_centered("TAP TO FIGHT AGAIN", FL_VIEW_WIDTH / 2, 340, 14, WHITE);
 }
 
 void frostline_view_draw(const fl_state_t *model)

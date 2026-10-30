@@ -154,6 +154,21 @@ class Canvas:
                 if (lx / rx) ** 2 + (ly / ry) ** 2 <= 1.0:
                     self.set(col, row, value)
 
+    def ellipse_outline(self, cx, cy, rx, ry, value):
+        """Hollow ellipse drawn as left and right arcs."""
+        cx, cy = int(cx), int(cy)
+        rx, ry = float(rx), float(ry)
+        if rx <= 0 or ry <= 0:
+            self.set(cx, cy, value)
+            return
+        for row in range(cy - int(ry), cy + int(ry) + 1):
+            ratio = (row - cy) / ry
+            if abs(ratio) > 1.0:
+                continue
+            offset = rx * (1.0 - ratio * ratio) ** 0.5
+            self.set(int(cx - offset), row, value)
+            self.set(int(cx + offset), row, value)
+
     def polygon(self, points, value):
         """Filled convex polygon given as a list of (x, y) vertices."""
         if len(points) < 3:
@@ -254,6 +269,139 @@ def point_in_polygon(px, py, points):
                 inside = not inside
         j = i
     return inside
+
+
+# ----------------------------------------------------------------------
+# Engraving primitives.
+#
+# The reference art gets its richness from hatching, not from tone
+# gradients: every shaded surface is filled with parallel strokes. These
+# helpers clip hatch lines to an arbitrary polygon so any silhouette can
+# carry interior detail.
+# ----------------------------------------------------------------------
+
+
+def _segment_hits(p0, p1, polygon):
+    """Parameters along p0->p1 where the segment crosses the polygon edges."""
+    x0, y0 = p0
+    x1, y1 = p1
+    dx, dy = x1 - x0, y1 - y0
+    hits = []
+    count = len(polygon)
+    for index in range(count):
+        ax, ay = polygon[index]
+        bx, by = polygon[(index + 1) % count]
+        ex, ey = bx - ax, by - ay
+        denominator = dx * ey - dy * ex
+        if abs(denominator) < 1e-9:
+            continue
+        t = ((ax - x0) * ey - (ay - y0) * ex) / denominator
+        u = ((ax - x0) * dy - (ay - y0) * dx) / denominator
+        if -0.001 <= u <= 1.001:
+            hits.append(t)
+    hits.sort()
+    return hits
+
+
+def _bounds(points):
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def hatch_polygon(canvas, points, angle_deg, spacing, value, offset=0.0,
+                  inset=0.0):
+    """Fill a polygon with parallel strokes at the given angle.
+
+    spacing is the distance between strokes in pixels; offset shifts the
+    whole pattern along the stroke normal.
+    """
+    if len(points) < 3 or spacing <= 0:
+        return
+    import math
+    radians = math.radians(angle_deg)
+    dx, dy = math.cos(radians), math.sin(radians)
+    nx, ny = -dy, dx
+    min_x, min_y, max_x, max_y = _bounds(points)
+    span = (max_x - min_x) + (max_y - min_y)
+    if span <= 0:
+        return
+    cx, cy = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
+    count = int(span / spacing) + 2
+    for index in range(-count, count + 1):
+        distance = index * spacing + offset
+        base = (cx + nx * distance, cy + ny * distance)
+        p0 = (base[0] - dx * span, base[1] - dy * span)
+        p1 = (base[0] + dx * span, base[1] + dy * span)
+        hits = _segment_hits(p0, p1, points)
+        for pair in range(0, len(hits) - 1, 2):
+            t0, t1 = hits[pair], hits[pair + 1]
+            ax = p0[0] + (p1[0] - p0[0]) * t0
+            ay = p0[1] + (p1[1] - p0[1]) * t0
+            bx = p0[0] + (p1[0] - p0[0]) * t1
+            by = p0[1] + (p1[1] - p0[1]) * t1
+            if inset > 0:
+                mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
+                length = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+                if length <= 0:
+                    continue
+                shrink = inset / length
+                ax, ay = ax + (mx - ax) * shrink, ay + (my - ay) * shrink
+                bx, by = bx + (mx - bx) * shrink, by + (my - by) * shrink
+            canvas.line(ax, ay, bx, by, value)
+
+
+def cross_hatch_polygon(canvas, points, spacing, value, offset=0.0):
+    """Two hatch passes at 45 and 135 degrees."""
+    hatch_polygon(canvas, points, 45.0, spacing, value, offset=offset)
+    hatch_polygon(canvas, points, 135.0, spacing, value, offset=offset + spacing / 2.0)
+
+
+def outline_polygon(canvas, points, value, width=1):
+    """Draw the closed outline of a polygon."""
+    count = len(points)
+    for index in range(count):
+        x0, y0 = points[index]
+        x1, y1 = points[(index + 1) % count]
+        if width <= 1:
+            canvas.line(x0, y0, x1, y1, value)
+        else:
+            canvas.thick_line(x0, y0, x1, y1, width, value)
+
+
+def stipple_polygon(canvas, points, density, offset=(0, 0)):
+    """Ordered-dither fill of a polygon."""
+    limit = density * 64.0
+    min_x, min_y, max_x, max_y = _bounds(points)
+    for row in range(int(min_y), int(max_y) + 1):
+        for col in range(int(min_x), int(max_x) + 1):
+            if not point_in_polygon(col, row, points):
+                continue
+            if dither_value(col, row, offset) < limit:
+                canvas.set(col, row, BLACK)
+
+
+def blob_points(cx, cy, radius, sides=9, wobble=0.22, phase=0.0, squash=1.0):
+    """An irregular closed silhouette: the base shape for rocks and drifts."""
+    import math
+    points = []
+    for index in range(sides):
+        angle = phase + 2.0 * math.pi * index / sides
+        wave = 1.0 + wobble * math.sin(angle * 2.3 + phase * 3.1)
+        wave += wobble * 0.5 * math.sin(angle * 5.1 + phase)
+        rx = radius * wave
+        ry = radius * wave * squash
+        points.append((cx + math.cos(angle) * rx, cy + math.sin(angle) * ry))
+    return points
+
+
+def fill_polygon(canvas, points, value):
+    """Scanline fill of a polygon."""
+    min_x, min_y, max_x, max_y = _bounds(points)
+    for row in range(int(min_y), int(max_y) + 1):
+        for col in range(int(min_x), int(max_x) + 1):
+            if point_in_polygon(col, row, points):
+                canvas.set(col, row, value)
 
 
 def dither_polygon(canvas, points, density, offset=(0, 0)):

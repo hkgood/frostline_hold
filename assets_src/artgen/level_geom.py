@@ -9,6 +9,38 @@ mirrors these values in components/app_game/data/frostline_level.h, and
 artgen/test_level_sync.py asserts the two never drift apart.
 """
 
+def fillet_path(points, radius=16, segments=7):
+    """Round off every corner with a quadratic arc.
+
+    The corners are what make a road look machine-cut; rounding them lets the
+    drawn route and the route the enemies walk stay the same curve.
+    """
+    if len(points) < 3:
+        return list(points)
+    out = [points[0]]
+    for index in range(1, len(points) - 1):
+        p0, p1, p2 = points[index - 1], points[index], points[index + 1]
+        d0 = ((p1[0] - p0[0]) ** 2 + (p1[1] - p0[1]) ** 2) ** 0.5
+        d1 = ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
+        cut = min(radius, d0 * 0.45, d1 * 0.45)
+        if cut < 2.0:
+            out.append(p1)
+            continue
+        ax = p1[0] + (p0[0] - p1[0]) / d0 * cut
+        ay = p1[1] + (p0[1] - p1[1]) / d0 * cut
+        bx = p1[0] + (p2[0] - p1[0]) / d1 * cut
+        by = p1[1] + (p2[1] - p1[1]) / d1 * cut
+        for step in range(segments + 1):
+            t = step / float(segments)
+            ox = (1 - t) ** 2
+            oy = 2 * (1 - t) * t
+            oz = t ** 2
+            out.append((ox * ax + oy * p1[0] + oz * bx,
+                        ox * ay + oy * p1[1] + oz * by))
+    out.append(points[-1])
+    return out
+
+
 PLAY_TOP = 44
 PLAY_BOTTOM = 412
 VIEW_WIDTH = 480
@@ -29,7 +61,12 @@ PATH_LANE_B = [
     (462, 150), (396, 150), (396, 250), (330, 250), (330, 300), MERGE_POINT,
 ]
 
-ALL_PATHS = (PATH_LANE_A, PATH_LANE_B)
+# The drawn route is the rounded version of the design polyline; the model
+# walks exactly this curve so the enemies never leave the painted road.
+PATH_LANE_A_ROUTE = fillet_path(PATH_LANE_A)
+PATH_LANE_B_ROUTE = fillet_path(PATH_LANE_B)
+
+ALL_PATHS = (PATH_LANE_A_ROUTE, PATH_LANE_B_ROUTE)
 
 # Build pads sit beside the roads and never on them.
 BUILD_SPOTS = [
@@ -40,14 +77,20 @@ BUILD_SPOTS = [
 
 HERO_POSTS = [(96, 300), (376, 214)]
 
-# Enemy roster. (kind, name, hp, armor, speed px/s, bounty)
+# Enemy roster. (kind, name, hp, armor, speed px/s, bounty, score)
+# `bounty` is the gold paid on a kill, `score` is the points paid on a kill.
 ENEMY_WOLF = 0
 ENEMY_RAIDER = 1
 
 ENEMY_STATS = [
-    (ENEMY_WOLF, "wolf", 40, 0, 52, 3),
-    (ENEMY_RAIDER, "raider", 70, 2, 34, 5),
+    (ENEMY_WOLF, "wolf", 40, 0, 52, 3, 10),
+    (ENEMY_RAIDER, "raider", 70, 2, 34, 5, 25),
 ]
+
+# Points awarded for clearing a wave, on top of the points from the kills.
+# Twice the gold reward keeps the score curve tied to the difficulty curve.
+def wave_score_bonus(wave):
+    return wave["reward"] * 2
 
 # Wave table. Each wave is a list of batches; a batch spawns `count` enemies of
 # one kind every `interval` ticks down one lane.
@@ -105,6 +148,9 @@ WAVES = [
                                 (ENEMY_WOLF, 16, 10, LANE_A),
                                 (ENEMY_WOLF, 16, 10, LANE_B)]},
 ]
+
+for _wave in WAVES:
+    _wave["score_bonus"] = wave_score_bonus(_wave)
 
 WAVE_COUNT = len(WAVES)
 FIRST_PREP_TICKS = 20 * 30
