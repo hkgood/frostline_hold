@@ -25,10 +25,14 @@
 #define PROJECTILE_DRAW_SIZE 16.0f
 #define ICON_DRAW_SIZE 16.0f
 
-static const char *const TOWER_NAMES[9] = {
-    "tower_guard_lv1", "tower_guard_lv2", "tower_guard_lv3",
-    "tower_frost_lv1", "tower_frost_lv2", "tower_frost_lv3",
-    "tower_siege_lv1", "tower_siege_lv2", "tower_siege_lv3",
+/* [kind][variant]: level 1, level 2, then the two level 3 branches. */
+static const char *const TOWER_NAMES[3][4] = {
+    {"tower_guard_lv1", "tower_guard_lv2", "tower_guard_lv3a",
+     "tower_guard_lv3b"},
+    {"tower_frost_lv1", "tower_frost_lv2", "tower_frost_lv3a",
+     "tower_frost_lv3b"},
+    {"tower_siege_lv1", "tower_siege_lv2", "tower_siege_lv3a",
+     "tower_siege_lv3b"},
 };
 
 static const char *const TOWER_LABELS[3] = {"GUARD", "FROST", "SIEGE"};
@@ -40,7 +44,7 @@ typedef struct {
     raylib_lite_atlas_t props;
     raylib_lite_atlas_t fx;
     raylib_lite_asset_id_t background;
-    raylib_lite_asset_id_t towers[9];
+    raylib_lite_asset_id_t towers[3][4];
     raylib_lite_asset_id_t wolf[4];
     raylib_lite_asset_id_t raider[4];
     raylib_lite_asset_id_t pads[2];
@@ -61,8 +65,11 @@ void frostline_view_init(void)
     s_assets.fx = raylib_lite_atlas_load("fx.atlas");
 
     s_assets.background = raylib_lite_asset_id("map_background");
-    for (int i = 0; i < 9; ++i) {
-        s_assets.towers[i] = raylib_lite_asset_id(TOWER_NAMES[i]);
+    for (int kind = 0; kind < 3; ++kind) {
+        for (int variant = 0; variant < 4; ++variant) {
+            s_assets.towers[kind][variant] =
+                raylib_lite_asset_id(TOWER_NAMES[kind][variant]);
+        }
     }
     for (int i = 0; i < 4; ++i) {
         char name[32];
@@ -179,14 +186,23 @@ static void draw_towers(const fl_state_t *model)
         if (!tower->active) {
             continue;
         }
-        int index = (int)tower->kind * 3 + (int)tower->level - 1;
-        if (index < 0 || index > 8) {
+        int kind = (int)tower->kind - 1;
+        if (kind < 0 || kind > 2) {
             continue;
+        }
+        int variant = (int)tower->level - 1;
+        if (tower->level >= 3) {
+            int option = fl_tower_option(tower, 1);
+            variant = 2 + (option < 0 ? 0 : option);
+        }
+        if (variant < 0 || variant > 3) {
+            variant = 0;
         }
         float x = (float)tower->x - TOWER_DRAW_SIZE / 2.0f;
         float y = (float)tower->y - TOWER_DRAW_SIZE + 8.0f;
         bool selected = model->selected_tower == (int8_t)i;
-        draw_padded(s_assets.units, s_assets.towers[index], x, y, TOWER_DRAW_SIZE);
+        draw_padded(s_assets.units, s_assets.towers[kind][variant], x, y,
+                    TOWER_DRAW_SIZE);
 
         /* Level pips under the tower. */
         for (int level = 0; level < 3; ++level) {
@@ -278,22 +294,71 @@ static void draw_hud(const fl_state_t *model)
                        FL_SPEED_BTN_X + FL_SPEED_BTN_W / 2, FL_BTN_Y + 7, 16, WHITE);
 }
 
+/* The panel that opens when a tower is picked: its numbers, the two upgrades
+ * on offer, and the sell button. */
+static void draw_upgrade_panel(const fl_state_t *model)
+{
+    const fl_tower_t *tower = &model->towers[model->selected_tower];
+    if (!tower->active) {
+        return;
+    }
+    DrawRectangle(0, FL_PANEL_TOP, FL_VIEW_WIDTH, FL_PANEL_HEIGHT, BLACK);
+    DrawRectangle(0, FL_PANEL_TOP, FL_VIEW_WIDTH, 2, WHITE);
+
+    DrawText(TOWER_LABELS[tower->kind - 1], 12, FL_PANEL_TOP + 5, 16, WHITE);
+    DrawText(TextFormat("LV%u", (unsigned)tower->level), 86, FL_PANEL_TOP + 6, 14,
+             WHITE);
+
+    fl_tower_stats_t stat = fl_tower_stats(tower);
+    DrawText(TextFormat("DMG %d  RNG %d  CD %d", stat.damage, stat.range,
+                        stat.cooldown),
+             150, FL_PANEL_TOP + 6, 12, WHITE);
+    DrawText(TextFormat("SELL %u", (unsigned)(tower->invested / 2)),
+             396, FL_PANEL_TOP + 6, 12, WHITE);
+
+    if (tower->level >= FL_TOWER_LEVEL_COUNT) {
+        /* Show what the tower ended up as instead of an empty panel. */
+        char line[64];
+        const char *first = fl_upgrade_name(tower->kind, 0,
+                                            fl_tower_option(tower, 0));
+        const char *second = fl_upgrade_name(tower->kind, 1,
+                                             fl_tower_option(tower, 1));
+        snprintf(line, sizeof(line), "%s + %s", first, second);
+        draw_text_centered(line, FL_VIEW_WIDTH / 2, FL_UPGRADE_CARD_Y + 18, 16,
+                           WHITE);
+        return;
+    }
+
+    int stage = (int)tower->level - 1;
+    uint16_t cost = fl_upgrade_cost(model, model->selected_tower);
+    bool affordable = model->gold >= cost;
+    for (int i = 0; i < FL_TOWER_OPTION_COUNT; ++i) {
+        int card_x = FL_UPGRADE_CARD_X0
+                     + i * (FL_UPGRADE_CARD_W + FL_UPGRADE_CARD_GAP);
+        draw_panel(card_x, FL_UPGRADE_CARD_Y, FL_UPGRADE_CARD_W,
+                   FL_UPGRADE_CARD_H, true);
+        DrawText(fl_upgrade_name(tower->kind, stage, i), card_x + 8,
+                 FL_UPGRADE_CARD_Y + 6, 14, BLACK);
+        DrawText(TextFormat("LV%u", (unsigned)tower->level + 1), card_x + 8,
+                 FL_UPGRADE_CARD_Y + 26, 12, BLACK);
+        DrawText(TextFormat("%u", (unsigned)cost), card_x + FL_UPGRADE_CARD_W - 34,
+                 FL_UPGRADE_CARD_Y + 24, 14, BLACK);
+        if (!affordable) {
+            /* Strike the price through so an unaffordable upgrade reads. */
+            DrawLine(card_x + FL_UPGRADE_CARD_W - 36, FL_UPGRADE_CARD_Y + 31,
+                     card_x + FL_UPGRADE_CARD_W - 6, FL_UPGRADE_CARD_Y + 24,
+                     BLACK);
+        }
+    }
+}
+
 static void draw_build_bar(const fl_state_t *model)
 {
     DrawRectangle(0, FL_BAR_TOP, FL_VIEW_WIDTH, FL_BAR_HEIGHT, BLACK);
     DrawRectangle(0, FL_BAR_TOP, FL_VIEW_WIDTH, 2, WHITE);
 
     if (model->selected_tower >= 0) {
-        const fl_tower_t *tower = &model->towers[model->selected_tower];
-        if (!tower->active) {
-            return;
-        }
-        draw_panel(6, FL_BAR_TOP + 6, FL_VIEW_WIDTH - 12, FL_TOWER_CARD_H, false);
-        DrawText(TOWER_LABELS[tower->kind - 1], 18, FL_BAR_TOP + 12, 16, WHITE);
-        DrawText(TextFormat("LV %u", (unsigned)tower->level), 18, FL_BAR_TOP + 32, 14, WHITE);
-        DrawText(TextFormat("SELL %u", (unsigned)(tower->invested / 2)),
-                 120, FL_BAR_TOP + 22, 14, WHITE);
-        DrawText("TAP ELSEWHERE TO CLOSE", 210, FL_BAR_TOP + 22, 12, WHITE);
+        draw_upgrade_panel(model);
         return;
     }
 
@@ -302,9 +367,8 @@ static void draw_build_bar(const fl_state_t *model)
         bool armed = model->selected_kind == (uint8_t)(FL_TOWER_GUARD + i);
         /* Cards are white plates; the armed one flips to black. */
         draw_panel(x, FL_TOWER_CARD_Y, FL_TOWER_CARD_W, FL_TOWER_CARD_H, !armed);
-        int sprite = i * 3;
         float size = 38.0f;
-        draw_padded(s_assets.units, s_assets.towers[sprite],
+        draw_padded(s_assets.units, s_assets.towers[i][0],
                     (float)(x + (FL_TOWER_CARD_W - (int)size) / 2),
                     (float)(FL_TOWER_CARD_Y + 2), size);
         DrawText(TextFormat("%d", TOWER_COSTS[i]), x + 6, FL_TOWER_CARD_Y + 42, 14,

@@ -1,0 +1,7 @@
+{
+  "events": [
+    {"frame": 2, "type": "tap", "x": 56, "y": 446},
+    {"frame": 6, "type": "tap", "x": 58, "y": 108},
+    {"frame": 10, "type": "tap", "x": 58, "y": 108}
+  ]
+}

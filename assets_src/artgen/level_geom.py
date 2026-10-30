@@ -83,8 +83,8 @@ ENEMY_WOLF = 0
 ENEMY_RAIDER = 1
 
 ENEMY_STATS = [
-    (ENEMY_WOLF, "wolf", 40, 0, 52, 3, 10),
-    (ENEMY_RAIDER, "raider", 70, 2, 34, 5, 25),
+    (ENEMY_WOLF, "wolf", 40, 0, 52, 5, 10),
+    (ENEMY_RAIDER, "raider", 70, 2, 34, 9, 25),
 ]
 
 # Points awarded for clearing a wave, on top of the points from the kills.
@@ -100,50 +100,50 @@ LANE_B = 1
 
 WAVES = [
     # 1-3: wolves only, a gentle teaching ramp.
-    {"reward": 20, "batches": [(ENEMY_WOLF, 4, 34, LANE_A)]},
-    {"reward": 25, "batches": [(ENEMY_WOLF, 10, 24, LANE_A)]},
-    {"reward": 30, "batches": [(ENEMY_WOLF, 8, 24, LANE_A),
-                               (ENEMY_RAIDER, 3, 30, LANE_A)]},
-    # 4-6: raiders and armoured raiders join.
-    {"reward": 35, "batches": [(ENEMY_WOLF, 8, 20, LANE_A),
-                               (ENEMY_RAIDER, 5, 26, LANE_A)]},
-    {"reward": 40, "batches": [(ENEMY_RAIDER, 8, 24, LANE_A),
-                               (ENEMY_WOLF, 8, 18, LANE_A)]},
-    {"reward": 45, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
-                               (ENEMY_WOLF, 10, 16, LANE_A),
-                               (ENEMY_RAIDER, 4, 24, LANE_B)]},
-    # 7: both lanes are used for the first time.
-    {"reward": 50, "batches": [(ENEMY_WOLF, 14, 14, LANE_A),
+    {"reward": 50, "hp_mult": 100, "armor_add": 0, "batches": [(ENEMY_WOLF, 4, 34, LANE_A)]},
+    {"reward": 60, "hp_mult": 100, "armor_add": 0, "batches": [(ENEMY_WOLF, 9, 24, LANE_A)]},
+    {"reward": 65, "hp_mult": 105, "armor_add": 0, "batches": [(ENEMY_WOLF, 8, 24, LANE_A),
+                               (ENEMY_RAIDER, 2, 30, LANE_A)]},
+    # 4-6: the raiders arrive, but the numbers stay readable.
+    {"reward": 70, "hp_mult": 110, "armor_add": 1, "batches": [(ENEMY_WOLF, 8, 22, LANE_A),
+                               (ENEMY_RAIDER, 4, 26, LANE_A)]},
+    {"reward": 75, "hp_mult": 120, "armor_add": 2, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
+                               (ENEMY_WOLF, 8, 20, LANE_A)]},
+    {"reward": 80, "hp_mult": 130, "armor_add": 3, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
+                               (ENEMY_WOLF, 8, 18, LANE_A),
+                               (ENEMY_RAIDER, 2, 26, LANE_B)]},
+    # 7-9: the second lane opens up.
+    {"reward": 85, "hp_mult": 145, "armor_add": 4, "batches": [(ENEMY_WOLF, 10, 18, LANE_A),
                                (ENEMY_RAIDER, 6, 24, LANE_A),
-                               (ENEMY_RAIDER, 6, 24, LANE_B)]},
-    # 8: the reinforced wave.
-    {"reward": 70, "batches": [(ENEMY_WOLF, 12, 16, LANE_A),
-                               (ENEMY_RAIDER, 8, 20, LANE_A),
-                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
-    # 9-14: mixed pressure.
-    {"reward": 55, "batches": [(ENEMY_WOLF, 10, 18, LANE_A),
-                               (ENEMY_RAIDER, 8, 20, LANE_A),
-                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
-    {"reward": 60, "batches": [(ENEMY_RAIDER, 10, 18, LANE_A),
+                               (ENEMY_RAIDER, 4, 24, LANE_B)]},
+    {"reward": 90, "hp_mult": 160, "armor_add": 6, "batches": [(ENEMY_WOLF, 12, 16, LANE_A),
+                               (ENEMY_RAIDER, 6, 22, LANE_A),
+                               (ENEMY_RAIDER, 4, 22, LANE_B)]},
+    {"reward": 95, "hp_mult": 180, "armor_add": 8, "batches": [(ENEMY_RAIDER, 8, 20, LANE_A),
                                (ENEMY_WOLF, 12, 14, LANE_A),
-                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
-    {"reward": 65, "batches": [(ENEMY_WOLF, 16, 12, LANE_A),
-                               (ENEMY_RAIDER, 10, 18, LANE_A),
-                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
-    {"reward": 70, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
+                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
+    # 10-13: the pressure keeps climbing.
+    {"reward": 105, "hp_mult": 205, "armor_add": 11, "batches": [(ENEMY_RAIDER, 10, 18, LANE_A),
                                (ENEMY_WOLF, 14, 12, LANE_A),
-                               (ENEMY_RAIDER, 8, 16, LANE_B),
-                               (ENEMY_WOLF, 8, 14, LANE_B)]},
-    {"reward": 75, "batches": [(ENEMY_WOLF, 18, 10, LANE_A),
+                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
+    {"reward": 115, "hp_mult": 235, "armor_add": 13, "batches": [(ENEMY_WOLF, 16, 12, LANE_A),
+                               (ENEMY_RAIDER, 10, 16, LANE_A),
+                               (ENEMY_RAIDER, 8, 16, LANE_B)]},
+    {"reward": 125, "hp_mult": 270, "armor_add": 16, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
+                               (ENEMY_WOLF, 14, 12, LANE_A),
+                               (ENEMY_RAIDER, 10, 16, LANE_B),
+                               (ENEMY_WOLF, 8, 12, LANE_B)]},
+    {"reward": 140, "hp_mult": 310, "armor_add": 19, "batches": [(ENEMY_WOLF, 18, 10, LANE_A),
                                (ENEMY_RAIDER, 12, 14, LANE_A),
                                (ENEMY_RAIDER, 10, 14, LANE_B),
                                (ENEMY_RAIDER, 8, 14, LANE_B)]},
-    {"reward": 80, "batches": [(ENEMY_RAIDER, 14, 14, LANE_A),
+    # 14: the wall of raiders.
+    {"reward": 160, "hp_mult": 360, "armor_add": 23, "batches": [(ENEMY_RAIDER, 14, 14, LANE_A),
                                (ENEMY_WOLF, 18, 10, LANE_A),
-                               (ENEMY_RAIDER, 10, 14, LANE_B),
+                               (ENEMY_RAIDER, 12, 14, LANE_B),
                                (ENEMY_WOLF, 10, 12, LANE_B)]},
     # 15: the boss wave, flanked by raiders.
-    {"reward": 150, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
+    {"reward": 220, "hp_mult": 420, "armor_add": 26, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
                                 (ENEMY_RAIDER, 12, 16, LANE_B),
                                 (ENEMY_WOLF, 16, 10, LANE_A),
                                 (ENEMY_WOLF, 16, 10, LANE_B)]},
@@ -152,6 +152,7 @@ WAVES = [
 for _wave in WAVES:
     _wave["score_bonus"] = wave_score_bonus(_wave)
 
+BATCH_MAX = 4
 WAVE_COUNT = len(WAVES)
 FIRST_PREP_TICKS = 20 * 30
 PREP_TICKS = 12 * 30

@@ -13,10 +13,10 @@
     },
     {
       "alpha_mode": "binary",
-      "bytes": 130052,
+      "bytes": 130004,
       "file": "units.atlas",
       "format": "msa1",
-      "frames": 15,
+      "frames": 12,
       "height": 104,
       "type": "atlas",
       "variants": 0,
@@ -47,5 +47,5 @@
   ],
   "limit_bytes": 1048576,
   "schema": "mosaico-assets-report/v1",
-  "total_bytes": 672704
+  "total_bytes": 672656
 }

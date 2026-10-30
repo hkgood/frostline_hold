@@ -87,11 +87,16 @@ def _guard_tower(level, branch=None):
     if branch == "pierce":
         c.polygon([(20, pivot_y - 9), (28, pivot_y - 9), (24, pivot_y - 18)], BLACK)
         c.fill_rect(23, pivot_y - 7, 2, 9, WHITE)
-    elif branch == "rapid":
-        c.disc(24, pivot_y + 9, 5, BLACK)
-        c.disc(24, pivot_y + 9, 3, WHITE)
-        c.fill_rect(24 - 13, pivot_y - 8, 4, 8, BLACK)
-        c.fill_rect(24 + 9, pivot_y - 8, 4, 8, BLACK)
+    elif branch == "marksman":
+        # a scoped single shot: one long limb and a sighting tube
+        c.thick_line(24, pivot_y, 24 - 11, pivot_y - 7, 3, BLACK)
+        c.thick_line(24, pivot_y, 24 + 11, pivot_y - 7, 3, BLACK)
+        c.line(24 - 11, pivot_y - 7, 24, pivot_y - 2, WHITE)
+        c.line(24 + 11, pivot_y - 7, 24, pivot_y - 2, WHITE)
+        c.fill_rect(21, pivot_y - 17, 6, 4, BLACK)
+        c.fill_rect(22, pivot_y - 16, 4, 2, WHITE)
+        c.fill_rect(23, pivot_y - 14, 2, 17, BLACK)
+        c.fill_rect(24, pivot_y - 12, 1, 13, WHITE)
     elif level >= 3:
         c.fill_rect(24 + half + 2, top - 4, 3, 17, BLACK)
         c.fill_rect(24 + half + 2, top - 4, 3, 12, WHITE)
@@ -373,19 +378,21 @@ def _build_grid(cell, entries, columns=8):
 
 
 def build_units():
+    """Four frames per tower kind: level 1, level 2, and the two level 3
+    branches. The order matches the view's [kind][variant] table."""
     entries = []
-    for level in (1, 2, 3):
-        entries.append((f"tower_guard_lv{level}", _guard_tower(level)))
-    for level in (1, 2, 3):
-        entries.append((f"tower_frost_lv{level}", _frost_tower(level)))
-    for level in (1, 2, 3):
-        entries.append((f"tower_siege_lv{level}", _siege_tower(level)))
-    entries.append(("tower_guard_lv3_pierce", _guard_tower(3, "pierce")))
-    entries.append(("tower_guard_lv3_rapid", _guard_tower(3, "rapid")))
-    entries.append(("tower_frost_lv3_nova", _frost_tower(3, "nova")))
-    entries.append(("tower_frost_lv3_ray", _frost_tower(3, "ray")))
-    entries.append(("tower_siege_lv3_fire", _siege_tower(3, "fire")))
-    entries.append(("tower_siege_lv3_concussion", _siege_tower(3, "concussion")))
+    entries.append(("tower_guard_lv1", _guard_tower(1)))
+    entries.append(("tower_guard_lv2", _guard_tower(2)))
+    entries.append(("tower_guard_lv3a", _guard_tower(3, "pierce")))
+    entries.append(("tower_guard_lv3b", _guard_tower(3, "marksman")))
+    entries.append(("tower_frost_lv1", _frost_tower(1)))
+    entries.append(("tower_frost_lv2", _frost_tower(2)))
+    entries.append(("tower_frost_lv3a", _frost_tower(3, "nova")))
+    entries.append(("tower_frost_lv3b", _frost_tower(3, "ray")))
+    entries.append(("tower_siege_lv1", _siege_tower(1)))
+    entries.append(("tower_siege_lv2", _siege_tower(2)))
+    entries.append(("tower_siege_lv3a", _siege_tower(3, "fire")))
+    entries.append(("tower_siege_lv3b", _siege_tower(3, "concussion")))
     return _build_grid(UNIT_CELL, entries)
 
 

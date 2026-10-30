@@ -23,6 +23,11 @@
 #define FL_ENEMY_KIND_COUNT 2
 #define FL_BATCH_MAX 4
 
+#define FL_TOWER_KIND_COUNT 4
+#define FL_TOWER_LEVEL_COUNT 3
+#define FL_TOWER_STAGE_COUNT 2
+#define FL_TOWER_OPTION_COUNT 2
+
 #define FL_FIRST_PREP_TICKS 600
 #define FL_PREP_TICKS 360
 
@@ -184,8 +189,56 @@ typedef struct {
 } fl_enemy_stat_t;
 
 static const fl_enemy_stat_t FL_ENEMY_STATS[FL_ENEMY_KIND_COUNT] = {
-    {40, 0, 52, 3, 10},
-    {70, 2, 34, 5, 25},
+    {40, 0, 52, 5, 10},
+    {70, 2, 34, 9, 25},
+};
+
+/* One level of a tower. "cost" is the price of building it outright;
+ * "upgrade" is the price of moving up from the level below. */
+typedef struct {
+    int16_t damage;
+    int16_t range;
+    uint16_t cooldown;
+    int16_t aoe;
+    uint16_t projectile_speed;
+    uint16_t cost;
+    uint16_t upgrade;
+} fl_tower_level_t;
+
+/* A specialisation offered at one upgrade stage. The chosen ones stack. */
+typedef struct {
+    int16_t damage_mult;   /* percent on the level damage */
+    int16_t range_delta;   /* flat pixels */
+    int16_t cooldown_mult; /* percent on the reload time */
+    int16_t aoe_delta;     /* flat pixels */
+    int16_t slow_mult;     /* percent on the slow factor */
+    uint8_t pierce;        /* the shot ignores armour */
+    uint8_t burn;          /* the shot sets the target burning */
+    uint8_t stun;          /* the shot stops the target */
+    uint8_t double_shot;   /* the shot also hits a second enemy */
+} fl_tower_mod_t;
+
+static const fl_tower_level_t FL_TOWER_LEVELS[FL_TOWER_KIND_COUNT][FL_TOWER_LEVEL_COUNT] = {
+    {{0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0}},
+    {{18, 130, 30, 0, 300, 70, 0}, {24, 140, 26, 0, 320, 0, 90}, {32, 150, 23, 0, 340, 0, 140}},
+    {{12, 120, 37, 44, 240, 120, 0}, {16, 126, 33, 48, 255, 0, 150}, {21, 132, 29, 54, 270, 0, 220}},
+    {{30, 170, 60, 52, 180, 160, 0}, {40, 176, 54, 58, 195, 0, 210}, {52, 184, 47, 64, 210, 0, 320}},
+};
+
+/* [kind][stage][option]; stage 0 is level 1->2, stage 1 is level 2->3. */
+static const fl_tower_mod_t FL_TOWER_MODS[FL_TOWER_KIND_COUNT][FL_TOWER_STAGE_COUNT][FL_TOWER_OPTION_COUNT] = {
+    {{{0, 0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0, 0}}, {{0, 0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0, 0}}},
+    {{{215, 0, 126, 0, 0, 0, 0, 0, 0}, {85, 0, 78, 0, 0, 0, 0, 0, 1}}, {{110, 0, 0, 0, 0, 1, 0, 0, 0}, {120, 55, 0, 0, 0, 0, 0, 0, 0}}},
+    {{{95, -25, 0, 0, 55, 0, 0, 0, 0}, {90, 0, 0, 34, 0, 0, 0, 0, 0}}, {{105, 0, 0, 40, 0, 0, 0, 0, 0}, {130, 45, 0, 0, 0, 0, 0, 0, 0}}},
+    {{{130, 0, 0, 30, 0, 0, 0, 0, 0}, {105, 0, 0, 0, 0, 0, 1, 0, 0}}, {{100, 0, 0, 0, 0, 0, 0, 1, 0}, {115, 0, 88, 30, 0, 0, 0, 0, 0}}},
+};
+
+/* The printed name of every upgrade option, for the upgrade panel. */
+static const char *const FL_TOWER_MOD_NAMES[FL_TOWER_KIND_COUNT][FL_TOWER_STAGE_COUNT][FL_TOWER_OPTION_COUNT] = {
+    {{"", ""}, {"", ""}},
+    {{"BALLISTA", "REPEATER"}, {"PIERCE", "MARKSMAN"}},
+    {{"DEEPFREEZE", "GLACIER"}, {"NOVA", "RAY"}},
+    {{"HAIL", "FIREPOT"}, {"CONCUSSION", "SHATTER"}},
 };
 
 /* One spawn batch inside a wave. */
@@ -199,26 +252,28 @@ typedef struct {
 typedef struct {
     uint16_t reward;
     uint16_t score_bonus;
+    uint16_t hp_mult;      /* percent of the base health for this wave */
+    uint16_t armor_add;    /* armour added to every enemy in this wave */
     uint8_t batch_count;
     fl_batch_t batches[FL_BATCH_MAX];
 } fl_wave_t;
 
 static const fl_wave_t FL_WAVES[FL_WAVE_COUNT] = {
-    {20, 40, 1, {{0, 4, 34, 0}, }},
-    {25, 50, 1, {{0, 10, 24, 0}, }},
-    {30, 60, 2, {{0, 8, 24, 0}, {1, 3, 30, 0}, }},
-    {35, 70, 2, {{0, 8, 20, 0}, {1, 5, 26, 0}, }},
-    {40, 80, 2, {{1, 8, 24, 0}, {0, 8, 18, 0}, }},
-    {45, 90, 3, {{1, 6, 24, 0}, {0, 10, 16, 0}, {1, 4, 24, 1}, }},
-    {50, 100, 3, {{0, 14, 14, 0}, {1, 6, 24, 0}, {1, 6, 24, 1}, }},
-    {70, 140, 3, {{0, 12, 16, 0}, {1, 8, 20, 0}, {1, 6, 20, 1}, }},
-    {55, 110, 3, {{0, 10, 18, 0}, {1, 8, 20, 0}, {1, 6, 20, 1}, }},
-    {60, 120, 3, {{1, 10, 18, 0}, {0, 12, 14, 0}, {1, 8, 18, 1}, }},
-    {65, 130, 3, {{0, 16, 12, 0}, {1, 10, 18, 0}, {1, 8, 18, 1}, }},
-    {70, 140, 4, {{1, 12, 16, 0}, {0, 14, 12, 0}, {1, 8, 16, 1}, {0, 8, 14, 1}, }},
-    {75, 150, 4, {{0, 18, 10, 0}, {1, 12, 14, 0}, {1, 10, 14, 1}, {1, 8, 14, 1}, }},
-    {80, 160, 4, {{1, 14, 14, 0}, {0, 18, 10, 0}, {1, 10, 14, 1}, {0, 10, 12, 1}, }},
-    {150, 300, 4, {{1, 12, 16, 0}, {1, 12, 16, 1}, {0, 16, 10, 0}, {0, 16, 10, 1}, }},
+    {50, 100, 100, 0, 1, {{0, 4, 34, 0}, }},
+    {60, 120, 100, 0, 1, {{0, 9, 24, 0}, }},
+    {65, 130, 105, 0, 2, {{0, 8, 24, 0}, {1, 2, 30, 0}, }},
+    {70, 140, 110, 1, 2, {{0, 8, 22, 0}, {1, 4, 26, 0}, }},
+    {75, 150, 120, 2, 2, {{1, 6, 24, 0}, {0, 8, 20, 0}, }},
+    {80, 160, 130, 3, 3, {{1, 6, 24, 0}, {0, 8, 18, 0}, {1, 2, 26, 1}, }},
+    {85, 170, 145, 4, 3, {{0, 10, 18, 0}, {1, 6, 24, 0}, {1, 4, 24, 1}, }},
+    {90, 180, 160, 6, 3, {{0, 12, 16, 0}, {1, 6, 22, 0}, {1, 4, 22, 1}, }},
+    {95, 190, 180, 8, 3, {{1, 8, 20, 0}, {0, 12, 14, 0}, {1, 6, 20, 1}, }},
+    {105, 210, 205, 11, 3, {{1, 10, 18, 0}, {0, 14, 12, 0}, {1, 8, 18, 1}, }},
+    {115, 230, 235, 13, 3, {{0, 16, 12, 0}, {1, 10, 16, 0}, {1, 8, 16, 1}, }},
+    {125, 250, 270, 16, 4, {{1, 12, 16, 0}, {0, 14, 12, 0}, {1, 10, 16, 1}, {0, 8, 12, 1}, }},
+    {140, 280, 310, 19, 4, {{0, 18, 10, 0}, {1, 12, 14, 0}, {1, 10, 14, 1}, {1, 8, 14, 1}, }},
+    {160, 320, 360, 23, 4, {{1, 14, 14, 0}, {0, 18, 10, 0}, {1, 12, 14, 1}, {0, 10, 12, 1}, }},
+    {220, 440, 420, 26, 4, {{1, 12, 16, 0}, {1, 12, 16, 1}, {0, 16, 10, 0}, {0, 16, 10, 1}, }},
 };
 
 #endif

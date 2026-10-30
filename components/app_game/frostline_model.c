@@ -13,26 +13,10 @@
 
 #define FL_NO_TARGET 0xFF
 #define FL_SLOW_TICKS 45
-#define FL_SLOW_FACTOR 0.7f
+#define FL_SLOW_PERCENT 70
+#define FL_BURN_TICKS 90
+#define FL_STUN_TICKS 20
 #define FL_SELL_PERCENT 50
-
-typedef struct {
-    int16_t damage;
-    int16_t range;
-    uint16_t cooldown;
-    int16_t aoe;
-    uint16_t projectile_speed;
-    uint16_t cost;
-} fl_tower_stat_t;
-
-/* Ranges are generous because the roads snake in short segments: a tower has
- * to cover more than the stretch it physically stands next to. */
-static const fl_tower_stat_t FL_TOWER_STATS[4] = {
-    {0, 0, 0, 0, 0, 0},           /* FL_TOWER_NONE */
-    {18, 130, 30, 0, 300, 70},    /* FL_TOWER_GUARD */
-    {12, 120, 37, 44, 240, 120},  /* FL_TOWER_FROST */
-    {30, 170, 60, 52, 180, 160},  /* FL_TOWER_SIEGE */
-};
 
 /* ------------------------------------------------------------------ */
 /* Lane geometry                                                       */
@@ -107,10 +91,14 @@ static uint32_t fl_rand(fl_state_t *state)
     return x;
 }
 
+/* Armour is a flat cut, not a percentage. A percentage made big hits
+ * worthless against armour, which killed the "one huge bolt" branch; with a
+ * flat cut a heavy shot is the right answer to heavy armour, and only the
+ * piercing upgrade ignores armour altogether. */
 static float fl_apply_armor(float damage, int16_t armor)
 {
-    float reduced = damage * 60.0f / (60.0f + (float)armor);
-    float minimum = damage * 0.15f;
+    float reduced = damage - (float)armor;
+    float minimum = damage * 0.25f;
     return reduced < minimum ? minimum : reduced;
 }
 
@@ -164,10 +152,17 @@ static void fl_spawn_enemy(fl_state_t *state, uint8_t kind, uint8_t lane)
             continue;
         }
         const fl_enemy_stat_t *stat = &FL_ENEMY_STATS[kind];
+        /* Later waves are tougher without needing a new roster for each. */
+        uint16_t hp_mult = 100;
+        uint16_t armor_add = 0;
+        if (state->wave >= 1 && state->wave <= FL_WAVE_COUNT) {
+            hp_mult = FL_WAVES[state->wave - 1].hp_mult;
+            armor_add = FL_WAVES[state->wave - 1].armor_add;
+        }
         enemy->kind = kind;
-        enemy->max_hp = (float)stat->hp;
+        enemy->max_hp = (float)stat->hp * (float)hp_mult / 100.0f;
         enemy->hp = enemy->max_hp;
-        enemy->armor = stat->armor;
+        enemy->armor = (int16_t)(stat->armor + armor_add);
         enemy->lane = lane;
         enemy->dist = 0.0f;
         enemy->slow_ticks = 0;
@@ -177,12 +172,35 @@ static void fl_spawn_enemy(fl_state_t *state, uint8_t kind, uint8_t lane)
     }
 }
 
+/* Everything a single hit carries: the damage, the blast radius and the
+ * effects the shooting tower's upgrades gave it. */
+typedef struct {
+    int16_t damage;
+    int16_t aoe;
+    uint16_t slow_percent;
+    uint8_t flags;
+    bool slow;
+} fl_shot_t;
+
 static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
-                             int16_t raw_damage, bool apply_slow)
+                             const fl_shot_t *shot)
 {
-    enemy->hp -= fl_apply_armor((float)raw_damage, enemy->armor);
-    if (apply_slow) {
+    int16_t raw_damage = shot->damage;
+    float damage = (float)raw_damage;
+    if (!(shot->flags & FL_SHOT_PIERCE)) {
+        damage = fl_apply_armor(damage, enemy->armor);
+    }
+    enemy->hp -= damage;
+    if (shot->slow) {
         enemy->slow_ticks = FL_SLOW_TICKS;
+        enemy->slow_percent = shot->slow_percent;
+    }
+    if (shot->flags & FL_SHOT_BURN) {
+        enemy->burn_ticks = FL_BURN_TICKS;
+        enemy->burn_damage = (uint16_t)(raw_damage / 3);
+    }
+    if (shot->flags & FL_SHOT_STUN) {
+        enemy->stun_ticks = FL_STUN_TICKS;
     }
     if (enemy->hp > 0.0f) {
         return;
@@ -196,7 +214,9 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
 
 static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
                                 int target, int16_t damage, float x, float y,
-                                float tx, float ty)
+                                float tx, float ty, uint8_t flags,
+                                uint16_t speed, int16_t aoe,
+                                uint16_t slow_percent)
 {
     for (int i = 0; i < FL_MAX_PROJECTILES; ++i) {
         fl_projectile_t *shot = &state->projectiles[i];
@@ -210,7 +230,10 @@ static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
         shot->tx = tx;
         shot->ty = ty;
         shot->damage = damage;
-        shot->speed = FL_TOWER_STATS[kind].projectile_speed;
+        shot->speed = speed;
+        shot->flags = flags;
+        shot->aoe = aoe;
+        shot->slow_percent = slow_percent;
         shot->ttl = 120;
         shot->active = 1;
         return;
@@ -219,11 +242,11 @@ static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
 
 /* Target the enemy closest to the goal, which is the classic "first" rule. */
 static int fl_pick_target(const fl_state_t *state, const fl_tower_t *tower,
-                           const fl_tower_stat_t *stat)
+                           int16_t range)
 {
     int best = -1;
     float best_dist = -1.0f;
-    float range2 = (float)stat->range * (float)stat->range;
+    float range2 = (float)range * (float)range;
     for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
         const fl_enemy_t *enemy = &state->enemies[i];
         if (!enemy->alive) {
@@ -242,6 +265,32 @@ static int fl_pick_target(const fl_state_t *state, const fl_tower_t *tower,
     return best;
 }
 
+/* The second target of a repeater: the next one down the road. */
+static int fl_pick_second_target(const fl_state_t *state,
+                                  const fl_tower_t *tower, int16_t range,
+                                  int first)
+{
+    int best = -1;
+    float best_dist = -1.0f;
+    float range2 = (float)range * (float)range;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        const fl_enemy_t *enemy = &state->enemies[i];
+        if (!enemy->alive || i == first) {
+            continue;
+        }
+        float dx = enemy->x - (float)tower->x;
+        float dy = enemy->y - (float)tower->y;
+        if (dx * dx + dy * dy > range2) {
+            continue;
+        }
+        if (best < 0 || enemy->dist < best_dist) {
+            best = i;
+            best_dist = enemy->dist;
+        }
+    }
+    return best;
+}
+
 static void fl_update_towers(fl_state_t *state)
 {
     for (int i = 0; i < FL_MAX_TOWERS; ++i) {
@@ -249,29 +298,55 @@ static void fl_update_towers(fl_state_t *state)
         if (!tower->active) {
             continue;
         }
-        const fl_tower_stat_t *stat = &FL_TOWER_STATS[tower->kind];
+        fl_tower_stats_t stat = fl_tower_stats(tower);
         if (tower->cooldown > 0) {
             tower->cooldown--;
             continue;
         }
-        int target = fl_pick_target(state, tower, stat);
+        int target = fl_pick_target(state, tower, stat.range);
         if (target < 0) {
             continue;
         }
         const fl_enemy_t *enemy = &state->enemies[target];
-        fl_spawn_projectile(state, tower->kind, target, stat->damage,
+        uint8_t flags = 0;
+        if (stat.pierce) {
+            flags |= FL_SHOT_PIERCE;
+        }
+        if (stat.burn) {
+            flags |= FL_SHOT_BURN;
+        }
+        if (stat.stun) {
+            flags |= FL_SHOT_STUN;
+        }
+        fl_spawn_projectile(state, tower->kind, target, stat.damage,
                             (float)tower->x, (float)tower->y - 20.0f,
-                            enemy->x, enemy->y);
-        tower->cooldown = stat->cooldown;
+                            enemy->x, enemy->y, flags, stat.projectile_speed,
+                            stat.aoe, stat.slow_percent);
+        if (stat.double_shot) {
+            int second = fl_pick_second_target(state, tower, stat.range, target);
+            if (second >= 0) {
+                const fl_enemy_t *other = &state->enemies[second];
+                fl_spawn_projectile(state, tower->kind, second, stat.damage,
+                                    (float)tower->x, (float)tower->y - 20.0f,
+                                    other->x, other->y, flags,
+                                    stat.projectile_speed, stat.aoe,
+                                    stat.slow_percent);
+            }
+        }
+        tower->cooldown = stat.cooldown;
     }
 }
 
 static void fl_impact_projectile(fl_state_t *state, fl_projectile_t *shot)
 {
-    const fl_tower_stat_t *stat = &FL_TOWER_STATS[shot->kind];
-    bool slow = (shot->kind == FL_TOWER_FROST);
-    if (stat->aoe > 0) {
-        float aoe2 = (float)stat->aoe * (float)stat->aoe;
+    fl_shot_t hit;
+    hit.damage = shot->damage;
+    hit.aoe = shot->aoe;
+    hit.flags = shot->flags;
+    hit.slow = (shot->kind == FL_TOWER_FROST);
+    hit.slow_percent = shot->slow_percent ? shot->slow_percent : FL_SLOW_PERCENT;
+    if (hit.aoe > 0) {
+        float aoe2 = (float)hit.aoe * (float)hit.aoe;
         for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
             fl_enemy_t *enemy = &state->enemies[i];
             if (!enemy->alive) {
@@ -282,14 +357,14 @@ static void fl_impact_projectile(fl_state_t *state, fl_projectile_t *shot)
             if (dx * dx + dy * dy > aoe2) {
                 continue;
             }
-            fl_damage_enemy(state, enemy, shot->damage, slow);
+            fl_damage_enemy(state, enemy, &hit);
         }
         return;
     }
     if (shot->target < FL_MAX_ENEMIES) {
         fl_enemy_t *enemy = &state->enemies[shot->target];
         if (enemy->alive) {
-            fl_damage_enemy(state, enemy, shot->damage, slow);
+            fl_damage_enemy(state, enemy, &hit);
         }
     }
 }
@@ -334,9 +409,30 @@ static void fl_update_enemies(fl_state_t *state)
         if (enemy->slow_ticks > 0) {
             enemy->slow_ticks--;
         }
+        if (enemy->stun_ticks > 0) {
+            enemy->stun_ticks--;
+        }
+        if (enemy->burn_ticks > 0) {
+            enemy->burn_ticks--;
+            if (enemy->burn_ticks % 30 == 0) {
+                fl_shot_t burn;
+                burn.damage = (int16_t)enemy->burn_damage;
+                burn.aoe = 0;
+                burn.flags = FL_SHOT_PIERCE;
+                burn.slow = false;
+                burn.slow_percent = FL_SLOW_PERCENT;
+                fl_damage_enemy(state, enemy, &burn);
+                if (!enemy->alive) {
+                    continue;
+                }
+            }
+        }
+        if (enemy->stun_ticks > 0) {
+            continue;
+        }
         float speed = (float)FL_ENEMY_STATS[enemy->kind].speed;
         if (enemy->slow_ticks > 0) {
-            speed *= FL_SLOW_FACTOR;
+            speed *= (float)enemy->slow_percent / 100.0f;
         }
         enemy->dist += speed / 30.0f;
         if (enemy->lane == 1 && enemy->dist >= g_lane_b_len) {
@@ -433,6 +529,144 @@ static void fl_step(fl_state_t *state)
 }
 
 /* ------------------------------------------------------------------ */
+/* Tower stats                                                         */
+/* ------------------------------------------------------------------ */
+
+fl_tower_stats_t fl_tower_stats(const fl_tower_t *tower)
+{
+    fl_tower_stats_t out;
+    out.damage = 0;
+    out.range = 0;
+    out.cooldown = 1;
+    out.aoe = 0;
+    out.projectile_speed = 0;
+    out.slow_percent = FL_SLOW_PERCENT;
+    out.pierce = 0;
+    out.burn = 0;
+    out.stun = 0;
+    out.double_shot = 0;
+    if (!tower || tower->kind <= FL_TOWER_NONE || tower->kind > FL_TOWER_SIEGE) {
+        return out;
+    }
+    uint8_t level_index = (uint8_t)(tower->level ? tower->level - 1 : 0);
+    if (level_index >= FL_TOWER_LEVEL_COUNT) {
+        level_index = FL_TOWER_LEVEL_COUNT - 1;
+    }
+    const fl_tower_level_t *level = &FL_TOWER_LEVELS[tower->kind][level_index];
+    out.damage = level->damage;
+    out.range = level->range;
+    out.cooldown = level->cooldown ? level->cooldown : 1;
+    out.aoe = level->aoe;
+    out.projectile_speed = level->projectile_speed;
+
+    /* The chosen upgrades stack on top of the level. */
+    for (int stage = 0; stage < FL_TOWER_STAGE_COUNT; ++stage) {
+        for (int option = 0; option < FL_TOWER_OPTION_COUNT; ++option) {
+            int bit = stage * FL_TOWER_OPTION_COUNT + option;
+            if (!(tower->mod_mask & (1u << bit))) {
+                continue;
+            }
+            const fl_tower_mod_t *mod =
+                &FL_TOWER_MODS[tower->kind][stage][option];
+            if (mod->damage_mult) {
+                out.damage = (int16_t)(out.damage * mod->damage_mult / 100);
+            }
+            if (mod->range_delta) {
+                out.range = (int16_t)(out.range + mod->range_delta);
+            }
+            if (mod->cooldown_mult) {
+                out.cooldown = (uint16_t)(out.cooldown * mod->cooldown_mult / 100);
+            }
+            if (mod->aoe_delta) {
+                out.aoe = (int16_t)(out.aoe + mod->aoe_delta);
+            }
+            if (mod->slow_mult) {
+                out.slow_percent =
+                    (uint16_t)(out.slow_percent * mod->slow_mult / 100);
+            }
+            out.pierce |= mod->pierce;
+            out.burn |= mod->burn;
+            out.stun |= mod->stun;
+            out.double_shot |= mod->double_shot;
+        }
+    }
+    if (out.range < 20) {
+        out.range = 20;
+    }
+    if (out.cooldown < 4) {
+        out.cooldown = 4;
+    }
+    return out;
+}
+
+uint16_t fl_upgrade_cost(const fl_state_t *state, int index)
+{
+    if (!state || index < 0 || index >= FL_MAX_TOWERS) {
+        return 0;
+    }
+    const fl_tower_t *tower = &state->towers[index];
+    if (!tower->active || tower->level >= FL_TOWER_LEVEL_COUNT) {
+        return 0;
+    }
+    return FL_TOWER_LEVELS[tower->kind][tower->level].upgrade;
+}
+
+bool fl_upgrade_tower(fl_state_t *state, int index, int option)
+{
+    if (!state || index < 0 || index >= FL_MAX_TOWERS) {
+        return false;
+    }
+    fl_tower_t *tower = &state->towers[index];
+    if (!tower->active || tower->level >= FL_TOWER_LEVEL_COUNT) {
+        return false;
+    }
+    if (option < 0 || option >= FL_TOWER_OPTION_COUNT) {
+        return false;
+    }
+    uint16_t cost = FL_TOWER_LEVELS[tower->kind][tower->level].upgrade;
+    if (state->gold < cost) {
+        return false;
+    }
+    /* One bit per stage records which option was taken. */
+    int stage = tower->level - 1;
+    int bit = stage * FL_TOWER_OPTION_COUNT + option;
+    tower->mod_mask = (uint8_t)(tower->mod_mask | (1u << bit));
+    tower->level++;
+    tower->invested += cost;
+    tower->cooldown = 0;
+    state->gold = (uint16_t)(state->gold - cost);
+    return true;
+}
+
+int fl_tower_option(const fl_tower_t *tower, int stage)
+{
+    if (!tower || stage < 0 || stage >= FL_TOWER_STAGE_COUNT) {
+        return -1;
+    }
+    for (int option = 0; option < FL_TOWER_OPTION_COUNT; ++option) {
+        int bit = stage * FL_TOWER_OPTION_COUNT + option;
+        if (tower->mod_mask & (1u << bit)) {
+            return option;
+        }
+    }
+    return -1;
+}
+
+const char *fl_upgrade_name(fl_tower_kind_t kind, int stage, int option)
+{
+    if (kind <= FL_TOWER_NONE || kind > FL_TOWER_SIEGE) {
+        return "";
+    }
+    if (stage < 0 || stage >= FL_TOWER_STAGE_COUNT) {
+        return "";
+    }
+    if (option < 0 || option >= FL_TOWER_OPTION_COUNT) {
+        return "";
+    }
+    return FL_TOWER_MOD_NAMES[kind][stage][option];
+}
+
+/* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -478,7 +712,7 @@ bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kin
     if (kind <= FL_TOWER_NONE || kind > FL_TOWER_SIEGE) {
         return false;
     }
-    const fl_tower_stat_t *stat = &FL_TOWER_STATS[kind];
+    const fl_tower_level_t *stat = &FL_TOWER_LEVELS[kind][0];
     if (state->gold < stat->cost) {
         return false;
     }
@@ -495,7 +729,7 @@ bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kin
         tower->x = FL_BUILD_SPOTS[spot].x;
         tower->y = FL_BUILD_SPOTS[spot].y;
         tower->level = 1;
-        tower->branch = 0;
+        tower->mod_mask = 0;
         tower->cooldown = 0;
         tower->invested = stat->cost;
         tower->active = true;
@@ -542,6 +776,30 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
         return;
     }
 
+    /* The upgrade panel sits over the build bar while a tower is picked. */
+    if (state->selected_tower >= 0 && y >= FL_PANEL_TOP) {
+        for (int i = 0; i < FL_TOWER_OPTION_COUNT; ++i) {
+            int card_x = FL_UPGRADE_CARD_X0
+                         + i * (FL_UPGRADE_CARD_W + FL_UPGRADE_CARD_GAP);
+            if (x >= card_x && x < card_x + FL_UPGRADE_CARD_W
+                    && y >= FL_UPGRADE_CARD_Y
+                    && y < FL_UPGRADE_CARD_Y + FL_UPGRADE_CARD_H) {
+                fl_upgrade_tower(state, state->selected_tower, i);
+                return;
+            }
+        }
+        /* Tapping the panel but not a card sells the tower. */
+        if (x >= FL_UPGRADE_CARD_X0
+                && x < FL_UPGRADE_CARD_X0
+                     + FL_TOWER_OPTION_COUNT * FL_UPGRADE_CARD_W
+                     + (FL_TOWER_OPTION_COUNT - 1) * FL_UPGRADE_CARD_GAP
+                && y < FL_UPGRADE_CARD_Y) {
+            fl_sell_tower(state, state->selected_tower);
+            state->selected_tower = -1;
+        }
+        return;
+    }
+
     if (y >= FL_BAR_TOP) {
         for (int i = 0; i < FL_TOWER_CARD_COUNT; ++i) {
             int card_x = 8 + i * FL_TOWER_CARD_GAP;
@@ -573,7 +831,9 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
     if (state->selected_kind != FL_TOWER_NONE) {
         fl_build_tower(state, (int16_t)x, (int16_t)y,
                        (fl_tower_kind_t)state->selected_kind);
+        return;
     }
+    state->selected_tower = -1;
 }
 
 const char *fl_phase_name(const fl_state_t *state)

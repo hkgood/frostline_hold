@@ -41,6 +41,15 @@ extern "C" {
 #define FL_BUILD_RADIUS 26      /* how close a tap must be to a build spot */
 #define FL_TOWER_SELL_RATIO 0.5f
 
+/* The upgrade panel covers the bottom of the screen when a tower is picked. */
+#define FL_PANEL_TOP 392
+#define FL_PANEL_HEIGHT 88
+#define FL_UPGRADE_CARD_W 186
+#define FL_UPGRADE_CARD_H 54
+#define FL_UPGRADE_CARD_Y 420
+#define FL_UPGRADE_CARD_X0 14
+#define FL_UPGRADE_CARD_GAP 20
+
 typedef enum {
     FL_TOWER_NONE = 0,
     FL_TOWER_GUARD = 1,
@@ -68,7 +77,9 @@ typedef struct {
     fl_tower_kind_t kind;
     int16_t x, y;
     uint8_t level;       /* 1..3 */
-    uint8_t branch;      /* 0 none, 1 left option, 2 right option */
+    /* One bit per upgrade option: bit 0/1 is the level 1->2 choice, bit 2/3
+     * the level 2->3 choice. Exactly one bit per stage is ever set. */
+    uint8_t mod_mask;
     uint16_t cooldown;   /* ticks until the next shot */
     uint32_t invested;   /* total gold spent, for the sell refund */
     bool active;
@@ -82,6 +93,10 @@ typedef struct {
     uint8_t lane;        /* 0 = lane A, 1 = lane B */
     float dist;          /* distance travelled along the lane */
     uint16_t slow_ticks; /* remaining slow */
+    uint16_t slow_percent; /* enemy speed percent while slowed */
+    uint16_t burn_ticks; /* remaining burn */
+    uint16_t burn_damage;/* damage per second while burning */
+    uint16_t stun_ticks; /* remaining stun */
     uint8_t alive;
 } fl_enemy_t;
 
@@ -91,7 +106,10 @@ typedef struct {
     float x, y;
     float tx, ty;        /* current target position */
     int16_t damage;
+    int16_t aoe;         /* blast radius in px, 0 for a single target */
+    uint16_t slow_percent;/* enemy speed percent this shot applies */
     uint16_t speed;      /* px per second */
+    uint8_t flags;       /* FL_SHOT_* bits */
     uint8_t ttl;
     uint8_t active;
 } fl_projectile_t;
@@ -138,7 +156,36 @@ void fl_toggle_speed(fl_state_t *state);
 /** Toggle the paused flag. */
 void fl_toggle_pause(fl_state_t *state);
 
+/* Shot flags carried from the tower that fired. */
+#define FL_SHOT_PIERCE 0x01
+#define FL_SHOT_BURN   0x02
+#define FL_SHOT_STUN   0x04
+
+/* The stats a tower actually shoots with, after its chosen upgrades. */
+typedef struct {
+    int16_t damage;
+    int16_t range;
+    uint16_t cooldown;
+    int16_t aoe;
+    uint16_t projectile_speed;
+    uint16_t slow_percent;  /* enemy speed percent while slowed */
+    uint8_t pierce;
+    uint8_t burn;
+    uint8_t stun;
+    uint8_t double_shot;    /* the shot also hits a second enemy */
+} fl_tower_stats_t;
+
 /* --- gameplay -------------------------------------------------------- */
+/** The stats of a tower with the upgrades it has taken into account. */
+fl_tower_stats_t fl_tower_stats(const fl_tower_t *tower);
+/** What it costs to reach the next level; 0 when the tower is maxed. */
+uint16_t fl_upgrade_cost(const fl_state_t *state, int index);
+/** Take one of the two upgrades offered at the next stage. */
+bool fl_upgrade_tower(fl_state_t *state, int index, int option);
+/** The name of the option offered at a stage, e.g. "BALLISTA". */
+const char *fl_upgrade_name(fl_tower_kind_t kind, int stage, int option);
+/** Which option was taken at a stage: 0 or 1, or -1 when none was. */
+int fl_tower_option(const fl_tower_t *tower, int stage);
 /** Build a tower of the given kind at the nearest free build spot. */
 bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kind);
 /** Sell the tower at the given index and refund half of what was spent. */
