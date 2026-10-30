@@ -4,8 +4,12 @@
 /* Engine Host accepts source lists, not component include paths. Reference only
  * the model's public header so these translation units work on both targets. */
 #include "../app_game/include/app_game.h"
+#include "include/frostline_view.h"
 #include "private/game_config.h"
 #include "raylib_lite_raylib.h"
+#if !defined(RAYLIB_LITE_GAME_NATIVE)
+#include "host_asset_runtime.h"
+#endif
 
 typedef struct {
     app_game_handle_t game;
@@ -13,10 +17,19 @@ typedef struct {
 
 static int initialize(void *value, const char *asset_root)
 {
-    (void)asset_root;
     host_state_t *state = value;
+#if !defined(RAYLIB_LITE_GAME_NATIVE)
+    /* The Host serves the packed atlases from the generated asset folder. */
+    raylib_lite_host_assets_set_root(asset_root);
+#else
+    (void)asset_root;
+#endif
     const app_game_config_t config = {GAME_WIDTH, GAME_HEIGHT};
     if (app_game_create(&config, &state->game) != APP_GAME_OK) {
+        return -1;
+    }
+    frostline_view_init();
+    if (!frostline_view_ready()) {
         return -1;
     }
     InitWindow(GAME_WIDTH, GAME_HEIGHT, GAME_NAME);
@@ -27,6 +40,7 @@ static int initialize(void *value, const char *asset_root)
 static void shutdown(void *value)
 {
     host_state_t *state = value;
+    frostline_view_shutdown();
     app_game_destroy(&state->game);
 }
 
@@ -71,8 +85,9 @@ static int render(void *value)
         return -1;
     }
     ClearBackground(BLACK);
-    /* Read a model snapshot here when adding gameplay rendering. Keep hardware
-     * and drawing calls out of app_game so its rules remain independently testable. */
+    fl_state_t model;
+    app_game_get_model(((host_state_t *)value)->game, &model);
+    frostline_view_draw(&model);
     EndDrawing();
     return 0;
 }
@@ -93,14 +108,13 @@ static int state_json(const void *value, char *output, size_t capacity)
     if (!output || !capacity) {
         return -1;
     }
-    const app_game_snapshot_t state = app_game_read(((const host_state_t *)value)->game);
-    int size = snprintf(output, capacity,
-                        "{\"phase\":\"%s\",\"tick\":%lu,\"pointer_x\":%ld,\"pointer_y\":%ld,"
-                        "\"pointer_down\":%s,\"state_hash\":\"%08lx\"}",
-                        state.paused ? "paused" : "running", (unsigned long)state.tick,
-                        (long)state.pointer_x, (long)state.pointer_y,
-                        state.pointer_down ? "true" : "false", (unsigned long)state_hash(value));
-    return size < 0 || (size_t)size >= capacity ? -1 : size;
+    fl_state_t model;
+    app_game_get_model(((const host_state_t *)value)->game, &model);
+    int size = fl_state_json(&model, output, capacity);
+    if (size < 0) {
+        return -1;
+    }
+    return size;
 }
 
 static const raylib_lite_game_module_v1_t s_module = {

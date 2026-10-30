@@ -5,6 +5,7 @@
 struct app_game {
     app_game_config_t config;
     app_game_snapshot_t state;
+    fl_state_t model;
 };
 
 app_game_err_t app_game_create(const app_game_config_t *config, app_game_handle_t *ret_handle)
@@ -21,6 +22,7 @@ app_game_err_t app_game_create(const app_game_config_t *config, app_game_handle_
         return APP_GAME_NO_MEMORY;
     }
     game->config = *config;
+    fl_state_reset(&game->model, 0x464C5354u);
     *ret_handle = game;
     return APP_GAME_OK;
 }
@@ -39,6 +41,7 @@ void app_game_reset(app_game_handle_t game)
         game->state = (app_game_snapshot_t) {
             0
         };
+        fl_state_reset(&game->model, 0x464C5354u);
     }
 }
 
@@ -46,6 +49,7 @@ void app_game_set_paused(app_game_handle_t game, bool paused)
 {
     if (game) {
         game->state.paused = paused;
+        game->model.paused = paused;
     }
 }
 
@@ -57,7 +61,7 @@ void app_game_set_pointer(app_game_handle_t game, int32_t x, int32_t y, bool pre
     game->state.pointer_x = x < 0 ? 0 : (x >= game->config.width ? game->config.width - 1 : x);
     game->state.pointer_y = y < 0 ? 0 : (y >= game->config.height ? game->config.height - 1 : y);
     game->state.pointer_down = pressed;
-    /* Add touch-driven game logic here. */
+    fl_set_pointer(&game->model, x, y, pressed);
 }
 
 void app_game_update(app_game_handle_t game)
@@ -66,7 +70,7 @@ void app_game_update(app_game_handle_t game)
         return;
     }
     ++game->state.tick;
-    /* Add fixed-step game logic here. */
+    fl_state_update(&game->model);
 }
 
 app_game_snapshot_t app_game_read(app_game_handle_t game)
@@ -74,4 +78,12 @@ app_game_snapshot_t app_game_read(app_game_handle_t game)
     return game ? game->state : (app_game_snapshot_t) {
         0
     };
+}
+
+void app_game_get_model(app_game_handle_t handle, fl_state_t *out)
+{
+    if (!handle || !out) {
+        return;
+    }
+    *out = handle->model;
 }

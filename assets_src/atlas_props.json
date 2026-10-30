@@ -1,0 +1,70 @@
+{
+  "image": "props_atlas_source.png",
+  "columns": 8,
+  "rows": 2,
+  "output_cell": 36,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "enemy_wolf_0"
+    },
+    {
+      "name": "enemy_wolf_1"
+    },
+    {
+      "name": "enemy_wolf_2"
+    },
+    {
+      "name": "enemy_wolf_3"
+    },
+    {
+      "name": "enemy_raider_0"
+    },
+    {
+      "name": "enemy_raider_1"
+    },
+    {
+      "name": "enemy_raider_2"
+    },
+    {
+      "name": "enemy_raider_3"
+    },
+    {
+      "name": "build_pad_0"
+    },
+    {
+      "name": "build_pad_1"
+    }
+  ],
+  "animations": [
+    {
+      "name": "wolf_walk",
+      "frames": [
+        "enemy_wolf_0",
+        "enemy_wolf_1",
+        "enemy_wolf_2",
+        "enemy_wolf_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "raider_walk",
+      "frames": [
+        "enemy_raider_0",
+        "enemy_raider_1",
+        "enemy_raider_2",
+        "enemy_raider_3"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "pad_pulse",
+      "frames": [
+        "build_pad_0",
+        "build_pad_1"
+      ],
+      "frame_ticks": 15
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "mosaico-game-assets/v1",
+  "atlases": [
+    {"config": "atlas_terrain.json", "source": "terrain_atlas_source.png", "output": "terrain.atlas"},
+    {"config": "atlas_units.json", "source": "units_atlas_source.png", "output": "units.atlas"},
+    {"config": "atlas_props.json", "source": "props_atlas_source.png", "output": "props.atlas"},
+    {"config": "atlas_fx.json", "source": "fx_atlas_source.png", "output": "fx.atlas"}
+  ],
+  "maps": [],
+  "sounds": []
+}

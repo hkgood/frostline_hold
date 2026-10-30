@@ -1,4 +1,4 @@
-idf_component_register(SRCS "app_game_runtime.c"
+idf_component_register(SRCS "app_game_runtime.c" "frostline_view.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "private"
     REQUIRES examples_common

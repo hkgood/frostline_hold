@@ -3,6 +3,8 @@
   "sources": [
     "main/game_entry.c",
     "components/app_game/app_game.c",
-    "components/app_game_runtime/app_game_runtime.c"
+    "components/app_game/frostline_model.c",
+    "components/app_game_runtime/app_game_runtime.c",
+    "components/app_game_runtime/frostline_view.c"
   ]
 }

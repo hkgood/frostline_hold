@@ -40,6 +40,76 @@ BUILD_SPOTS = [
 
 HERO_POSTS = [(96, 300), (376, 214)]
 
+# Enemy roster. (kind, name, hp, armor, speed px/s, bounty)
+ENEMY_WOLF = 0
+ENEMY_RAIDER = 1
+
+ENEMY_STATS = [
+    (ENEMY_WOLF, "wolf", 40, 0, 52, 3),
+    (ENEMY_RAIDER, "raider", 70, 2, 34, 5),
+]
+
+# Wave table. Each wave is a list of batches; a batch spawns `count` enemies of
+# one kind every `interval` ticks down one lane.
+# (kind, count, interval_ticks, lane)
+LANE_A = 0
+LANE_B = 1
+
+WAVES = [
+    # 1-3: wolves only, a gentle teaching ramp.
+    {"reward": 20, "batches": [(ENEMY_WOLF, 4, 34, LANE_A)]},
+    {"reward": 25, "batches": [(ENEMY_WOLF, 10, 24, LANE_A)]},
+    {"reward": 30, "batches": [(ENEMY_WOLF, 8, 24, LANE_A),
+                               (ENEMY_RAIDER, 3, 30, LANE_A)]},
+    # 4-6: raiders and armoured raiders join.
+    {"reward": 35, "batches": [(ENEMY_WOLF, 8, 20, LANE_A),
+                               (ENEMY_RAIDER, 5, 26, LANE_A)]},
+    {"reward": 40, "batches": [(ENEMY_RAIDER, 8, 24, LANE_A),
+                               (ENEMY_WOLF, 8, 18, LANE_A)]},
+    {"reward": 45, "batches": [(ENEMY_RAIDER, 6, 24, LANE_A),
+                               (ENEMY_WOLF, 10, 16, LANE_A),
+                               (ENEMY_RAIDER, 4, 24, LANE_B)]},
+    # 7: both lanes are used for the first time.
+    {"reward": 50, "batches": [(ENEMY_WOLF, 14, 14, LANE_A),
+                               (ENEMY_RAIDER, 6, 24, LANE_A),
+                               (ENEMY_RAIDER, 6, 24, LANE_B)]},
+    # 8: the reinforced wave.
+    {"reward": 70, "batches": [(ENEMY_WOLF, 12, 16, LANE_A),
+                               (ENEMY_RAIDER, 8, 20, LANE_A),
+                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
+    # 9-14: mixed pressure.
+    {"reward": 55, "batches": [(ENEMY_WOLF, 10, 18, LANE_A),
+                               (ENEMY_RAIDER, 8, 20, LANE_A),
+                               (ENEMY_RAIDER, 6, 20, LANE_B)]},
+    {"reward": 60, "batches": [(ENEMY_RAIDER, 10, 18, LANE_A),
+                               (ENEMY_WOLF, 12, 14, LANE_A),
+                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
+    {"reward": 65, "batches": [(ENEMY_WOLF, 16, 12, LANE_A),
+                               (ENEMY_RAIDER, 10, 18, LANE_A),
+                               (ENEMY_RAIDER, 8, 18, LANE_B)]},
+    {"reward": 70, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
+                               (ENEMY_WOLF, 14, 12, LANE_A),
+                               (ENEMY_RAIDER, 8, 16, LANE_B),
+                               (ENEMY_WOLF, 8, 14, LANE_B)]},
+    {"reward": 75, "batches": [(ENEMY_WOLF, 18, 10, LANE_A),
+                               (ENEMY_RAIDER, 12, 14, LANE_A),
+                               (ENEMY_RAIDER, 10, 14, LANE_B),
+                               (ENEMY_RAIDER, 8, 14, LANE_B)]},
+    {"reward": 80, "batches": [(ENEMY_RAIDER, 14, 14, LANE_A),
+                               (ENEMY_WOLF, 18, 10, LANE_A),
+                               (ENEMY_RAIDER, 10, 14, LANE_B),
+                               (ENEMY_WOLF, 10, 12, LANE_B)]},
+    # 15: the boss wave, flanked by raiders.
+    {"reward": 150, "batches": [(ENEMY_RAIDER, 12, 16, LANE_A),
+                                (ENEMY_RAIDER, 12, 16, LANE_B),
+                                (ENEMY_WOLF, 16, 10, LANE_A),
+                                (ENEMY_WOLF, 16, 10, LANE_B)]},
+]
+
+WAVE_COUNT = len(WAVES)
+FIRST_PREP_TICKS = 20 * 30
+PREP_TICKS = 12 * 30
+
 # Forest patches: conifers are scattered here to build up visual density.
 # Each zone is (x0, y0, x1, y1) with x1 > x0 and y1 > y0.
 FOREST_ZONES = [

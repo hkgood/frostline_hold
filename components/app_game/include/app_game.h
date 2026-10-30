@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "../include/frostline_model.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,6 +53,9 @@ void app_game_set_pointer(app_game_handle_t handle, int32_t x, int32_t y, bool p
 void app_game_update(app_game_handle_t handle);
 /** Return a value snapshot on the owning loop; NULL returns all zeros. */
 app_game_snapshot_t app_game_read(app_game_handle_t handle);
+
+/** Copy the full game model out for rendering. NULL handle or out is a no-op. */
+void app_game_get_model(app_game_handle_t handle, fl_state_t *out);
 
 #ifdef __cplusplus
 }

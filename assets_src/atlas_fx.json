@@ -1,0 +1,60 @@
+{
+  "image": "fx_atlas_source.png",
+  "columns": 8,
+  "rows": 2,
+  "output_cell": 20,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "projectile_0_0"
+    },
+    {
+      "name": "projectile_0_1"
+    },
+    {
+      "name": "projectile_0_2"
+    },
+    {
+      "name": "spark_0"
+    },
+    {
+      "name": "spark_1"
+    },
+    {
+      "name": "spark_2"
+    },
+    {
+      "name": "spark_3"
+    },
+    {
+      "name": "spark_4"
+    },
+    {
+      "name": "spark_5"
+    },
+    {
+      "name": "icon_heart"
+    },
+    {
+      "name": "icon_coin"
+    },
+    {
+      "name": "icon_flag"
+    }
+  ],
+  "animations": [
+    {
+      "name": "spark",
+      "frames": [
+        "spark_0",
+        "spark_1",
+        "spark_2",
+        "spark_3",
+        "spark_4",
+        "spark_5"
+      ],
+      "frame_ticks": 2
+    }
+  ]
+}

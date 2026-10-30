@@ -1,0 +1,56 @@
+{
+  "image": "units_atlas_source.png",
+  "columns": 8,
+  "rows": 2,
+  "output_cell": 52,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "tower_guard_lv1"
+    },
+    {
+      "name": "tower_guard_lv2"
+    },
+    {
+      "name": "tower_guard_lv3"
+    },
+    {
+      "name": "tower_frost_lv1"
+    },
+    {
+      "name": "tower_frost_lv2"
+    },
+    {
+      "name": "tower_frost_lv3"
+    },
+    {
+      "name": "tower_siege_lv1"
+    },
+    {
+      "name": "tower_siege_lv2"
+    },
+    {
+      "name": "tower_siege_lv3"
+    },
+    {
+      "name": "tower_guard_lv3_pierce"
+    },
+    {
+      "name": "tower_guard_lv3_rapid"
+    },
+    {
+      "name": "tower_frost_lv3_nova"
+    },
+    {
+      "name": "tower_frost_lv3_ray"
+    },
+    {
+      "name": "tower_siege_lv3_fire"
+    },
+    {
+      "name": "tower_siege_lv3_concussion"
+    }
+  ],
+  "animations": []
+}

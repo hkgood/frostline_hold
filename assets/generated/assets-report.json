@@ -1,0 +1,51 @@
+{
+  "files": [
+    {
+      "alpha_mode": "opaque",
+      "bytes": 460836,
+      "file": "terrain.atlas",
+      "format": "msa1",
+      "frames": 1,
+      "height": 480,
+      "type": "atlas",
+      "variants": 0,
+      "width": 480
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 130052,
+      "file": "units.atlas",
+      "format": "msa1",
+      "frames": 15,
+      "height": 104,
+      "type": "atlas",
+      "variants": 0,
+      "width": 416
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 62388,
+      "file": "props.atlas",
+      "format": "msa1",
+      "frames": 10,
+      "height": 72,
+      "type": "atlas",
+      "variants": 0,
+      "width": 288
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 19412,
+      "file": "fx.atlas",
+      "format": "msa1",
+      "frames": 12,
+      "height": 40,
+      "type": "atlas",
+      "variants": 0,
+      "width": 160
+    }
+  ],
+  "limit_bytes": 1048576,
+  "schema": "mosaico-assets-report/v1",
+  "total_bytes": 672688
+}

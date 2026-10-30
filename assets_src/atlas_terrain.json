@@ -1,0 +1,14 @@
+{
+  "image": "terrain_atlas_source.png",
+  "columns": 1,
+  "rows": 1,
+  "output_cell": 480,
+  "output_columns": 1,
+  "alpha_mode": "opaque",
+  "frames": [
+    {
+      "name": "map_background"
+    }
+  ],
+  "animations": []
+}
