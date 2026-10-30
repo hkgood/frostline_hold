@@ -1,0 +1,43 @@
+Copyright (c) 2026 hkgood. All rights reserved.
+
+FROSTLINE HOLD - PROPRIETARY SOFTWARE
+=====================================
+
+This software and its accompanying documentation, source code, artwork, level
+data, asset pipeline and generated assets (collectively, the "Software") are
+the confidential and proprietary property of the copyright holder.
+
+No licence is granted. Permission to use, copy, modify, merge, publish,
+distribute, sublicense, sell, or create derivative works of the Software, in
+whole or in part, is expressly NOT granted, except to the extent required by
+law or expressly agreed in a separate written agreement signed by the
+copyright holder.
+
+The Software may contain third-party components. Those components remain
+subject to their own licences, which are set out in the files that carry
+them. Nothing in this notice applies to, or restricts, those components.
+
+ATTRIBUTIONS
+------------
+
+The background engraving in `assets_src/ai/terrain_source.jpg` was produced
+with an image generation service and is covered by this notice. The engine
+(`raylib-lite-engine`) and the BSP and utility helpers are separate
+projects under their own licences and are not covered by this notice.
+
+TERMINATION
+-----------
+
+Any licence, if one was granted, terminates immediately and automatically
+upon any unauthorised use, modification or distribution of the Software.
+
+NO WARRANTY
+-----------
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -5,7 +5,7 @@
  * so the same code produces the same result in the Host simulator and on the
  * device.
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary
 /* The Engine supplies app_main and startup order. This file only selects our
  * application adapter. Use its public header for the Host source-list runner. */
 #include "../components/app_game_runtime/include/app_game_runtime.h"

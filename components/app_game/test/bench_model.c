@@ -8,7 +8,7 @@
  *   gcc -std=c11 -O2 -Iinclude -Idata -o /tmp/bench test/bench_model.c \
  *       frostline_model.c -lm && /tmp/bench
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include <stdio.h>
 
 #include "frostline_model.h"

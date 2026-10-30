@@ -1,6 +1,6 @@
 /* Rendering layer for Frostline Hold.
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #pragma once
 #include <stdbool.h>
 

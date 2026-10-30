@@ -57,3 +57,9 @@ shared model and map it from the device and Host adapters.
 Host needs a C compiler and Pillow, and uses the same C renderer as firmware.
 Firmware needs the pinned workspace ESP-IDF and initialized BSP, engine and utils.
 Before using any other Raylib API, check the engine's supported public headers.
+
+## Licence
+
+Proprietary. Copyright (c) 2026 hkgood. All rights reserved - see `LICENSE`.
+No permission is granted to use, copy, modify or distribute this project
+without a written agreement from the copyright holder.

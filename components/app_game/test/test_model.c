@@ -4,7 +4,7 @@
  *   gcc -std=c11 -Wall -Wextra -Iinclude -Idata \
  *       -o /tmp/test_model test/test_model.c frostline_model.c -lm && /tmp/test_model
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

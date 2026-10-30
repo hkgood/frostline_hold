@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary
 #pragma once
 #include "raylib_lite_game_module.h"
 

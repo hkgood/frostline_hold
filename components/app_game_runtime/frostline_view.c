@@ -4,7 +4,7 @@
  * is pure black or white so the panel keeps the 1-bit look, and all tone comes
  * from dithered textures baked at build time.
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include "include/frostline_view.h"
 #include "../app_game/data/frostline_level.h"
 

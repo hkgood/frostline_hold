@@ -3,7 +3,7 @@
  * No drawing, no hardware, no dynamic allocation: everything lives in the
  * caller-provided state struct and the fixed-size pools inside it.
  *
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>

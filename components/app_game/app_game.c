@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary
 #include <stdlib.h>
 #include "include/app_game.h"
 
