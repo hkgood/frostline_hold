@@ -118,6 +118,16 @@ static bool fl_any_enemy_alive(const fl_state_t *state)
     return false;
 }
 
+/* Raise one event bit. The runtime reads the accumulated set once per frame
+ * and turns it into sound, haptics and effects. */
+static void fl_raise(fl_state_t *state, uint32_t bit)
+{
+    if (!(state->events & bit)) {
+        state->event_serial++;
+    }
+    state->events |= bit;
+}
+
 static int fl_spot_index(int16_t x, int16_t y)
 {
     int best = -1;
@@ -222,6 +232,8 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
     state->gold += (uint16_t)FL_ENEMY_STATS[enemy->kind].bounty;
     state->score_kills += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
     state->score += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
+    state->last_kill_kind = (uint8_t)enemy->kind;
+    fl_raise(state, FL_EVENT_KILLED);
 }
 
 static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
@@ -334,6 +346,9 @@ static void fl_update_towers(fl_state_t *state)
                             (float)tower->x, (float)tower->y - 20.0f,
                             enemy->x, enemy->y, flags, stat.projectile_speed,
                             stat.aoe, stat.slow_percent);
+        fl_raise(state, tower->kind == FL_TOWER_GUARD ? FL_EVENT_SHOT_GUARD
+                    : tower->kind == FL_TOWER_FROST ? FL_EVENT_SHOT_FROST
+                    : FL_EVENT_SHOT_SIEGE);
         if (stat.double_shot) {
             int second = fl_pick_second_target(state, tower, stat.range, target);
             if (second >= 0) {
@@ -358,6 +373,9 @@ static void fl_impact_projectile(fl_state_t *state, fl_projectile_t *shot)
     hit.slow = (shot->kind == FL_TOWER_FROST);
     hit.slow_percent = shot->slow_percent ? shot->slow_percent : FL_SLOW_PERCENT;
     if (hit.aoe > 0) {
+        /* Only the area blasts get their own boom; a plain hit is covered by
+         * the shot sound, and doubling every hit would turn the mix to mud. */
+        fl_raise(state, FL_EVENT_IMPACT);
         float aoe2 = (float)hit.aoe * (float)hit.aoe;
         for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
             fl_enemy_t *enemy = &state->enemies[i];
@@ -538,6 +556,7 @@ static void fl_update_heroes(fl_state_t *state)
         shot.slow_percent = FL_SLOW_PERCENT;
         fl_damage_enemy(state, enemy, &shot);
         hero->cooldown = stat->cooldown;
+        fl_raise(state, FL_EVENT_HERO_SHOT);
     }
 }
 
@@ -602,11 +621,13 @@ static void fl_update_enemies(fl_state_t *state)
                 enemy->attack_timer = 20;
                 if (hero->hp > FL_HERO_HIT_DAMAGE) {
                     hero->hp = (uint16_t)(hero->hp - FL_HERO_HIT_DAMAGE);
+                    fl_raise(state, FL_EVENT_HERO_HIT);
                 } else {
                     hero->hp = 0;
                     hero->alive = 0;
                     hero->respawn_timer =
                         FL_HERO_STATS[hero->kind].respawn_ticks;
+                    fl_raise(state, FL_EVENT_HERO_DOWN);
                 }
             }
             continue;
@@ -624,6 +645,7 @@ static void fl_update_enemies(fl_state_t *state)
         if (enemy->dist >= g_lane_a_len) {
             enemy->alive = 0;
             state->leaks++;
+            fl_raise(state, FL_EVENT_LEAK);
             uint8_t cost = (enemy->behaviour == FL_BEHAVIOUR_SAP)
                            ? FL_SAP_LIVES : 1;
             for (uint8_t i = 0; i < cost && state->lives > 0; ++i) {
@@ -631,6 +653,7 @@ static void fl_update_enemies(fl_state_t *state)
             }
             if (state->lives == 0) {
                 state->phase = FL_PHASE_LOST;
+                fl_raise(state, FL_EVENT_LOST);
             }
         }
     }
@@ -673,6 +696,7 @@ static void fl_update_wave_state(fl_state_t *state)
     state->score_waves += wave->score_bonus;
     state->score += wave->score_bonus;
     state->wave++;
+    fl_raise(state, FL_EVENT_WAVE_CLEAR);
     if (state->wave > FL_WAVE_COUNT) {
         state->score_bonus = (uint32_t)state->lives * FL_SCORE_PER_LIFE;
         if (state->leaks == 0) {
@@ -680,6 +704,7 @@ static void fl_update_wave_state(fl_state_t *state)
         }
         state->score += state->score_bonus;
         state->phase = FL_PHASE_WON;
+        fl_raise(state, FL_EVENT_WON);
         return;
     }
     state->phase = FL_PHASE_PREP;
@@ -698,6 +723,7 @@ static void fl_step(fl_state_t *state)
             state->batch_index = 0;
             state->batch_spawned = 0;
             state->spawn_timer = 0;
+            fl_raise(state, FL_EVENT_WAVE_START);
         }
         return;
     }
@@ -809,6 +835,7 @@ bool fl_upgrade_tower(fl_state_t *state, int index, int option)
     }
     uint16_t cost = FL_TOWER_LEVELS[tower->kind][tower->level].upgrade;
     if (state->gold < cost) {
+        fl_raise(state, FL_EVENT_DENIED);
         return false;
     }
     /* One bit per stage records which option was taken. */
@@ -819,6 +846,7 @@ bool fl_upgrade_tower(fl_state_t *state, int index, int option)
     tower->invested += cost;
     tower->cooldown = 0;
     state->gold = (uint16_t)(state->gold - cost);
+    fl_raise(state, FL_EVENT_UPGRADED);
     return true;
 }
 
@@ -882,6 +910,16 @@ void fl_state_update(fl_state_t *state)
     }
 }
 
+uint32_t fl_events_take(fl_state_t *state)
+{
+    if (!state) {
+        return 0;
+    }
+    uint32_t events = state->events;
+    state->events = 0;
+    return events;
+}
+
 void fl_toggle_speed(fl_state_t *state)
 {
     state->speed = (uint8_t)((state->speed % 3) + 1);
@@ -899,6 +937,7 @@ bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kin
     }
     const fl_tower_level_t *stat = &FL_TOWER_LEVELS[kind][0];
     if (state->gold < stat->cost) {
+        fl_raise(state, FL_EVENT_DENIED);
         return false;
     }
     int spot = fl_spot_index(x, y);
@@ -919,6 +958,7 @@ bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kin
         tower->invested = stat->cost;
         tower->active = true;
         state->gold = (uint16_t)(state->gold - stat->cost);
+        fl_raise(state, FL_EVENT_BUILT);
         return true;
     }
     return false;
@@ -932,6 +972,7 @@ bool fl_sell_tower(fl_state_t *state, int index)
     uint32_t refund = state->towers[index].invested * FL_SELL_PERCENT / 100u;
     state->gold = (uint16_t)(state->gold + refund);
     state->towers[index].active = false;
+    fl_raise(state, FL_EVENT_SOLD);
     return true;
 }
 
@@ -942,6 +983,7 @@ bool fl_build_hero(fl_state_t *state, int16_t x, int16_t y, fl_hero_kind_t kind)
     }
     const fl_hero_stat_t *stat = &FL_HERO_STATS[kind];
     if (state->gold < stat->cost) {
+        fl_raise(state, FL_EVENT_DENIED);
         return false;
     }
     /* The nearest free post takes the hero. */
@@ -975,6 +1017,7 @@ bool fl_build_hero(fl_state_t *state, int16_t x, int16_t y, fl_hero_kind_t kind)
     hero->active = 1;
     hero->alive = 1;
     state->gold = (uint16_t)(state->gold - stat->cost);
+    fl_raise(state, FL_EVENT_HERO_PLACED);
     return true;
 }
 
@@ -1010,6 +1053,7 @@ bool fl_cast_hero_skill(fl_state_t *state, int index)
         enemy->slow_percent = FL_SLOW_PERCENT;
     }
     hero->skill_timer = stat->skill_cooldown;
+    fl_raise(state, FL_EVENT_NOVA);
     return true;
 }
 
@@ -1195,14 +1239,24 @@ uint32_t fl_state_hash(const fl_state_t *state)
 
 int fl_state_json(const fl_state_t *state, char *output, size_t capacity)
 {
+    return fl_state_json_sfx(state, NULL, output, capacity);
+}
+
+/* The Host preview picks up the sound to play from the state JSON. The name
+ * is supplied by the runtime, so the model only carries it. */
+int fl_state_json_sfx(const fl_state_t *state, const char *sfx,
+                      char *output, size_t capacity)
+{
     if (!output || !capacity) {
         return -1;
     }
+    const char *sound = (sfx && sfx[0]) ? sfx : "";
     int size = snprintf(output, capacity,
                         "{\"phase\":\"%s\",\"wave\":%u,\"gold\":%u,\"lives\":%u,"
                         "\"score\":%lu,\"score_kills\":%lu,\"score_waves\":%lu,"
                         "\"score_bonus\":%lu,\"leaks\":%u,"
-                        "\"kills\":%lu,\"tick\":%lu,\"speed\":%u,\"state_hash\":\"%08lx\"}",
+                        "\"kills\":%lu,\"tick\":%lu,\"speed\":%u,"
+                        "\"sfx\":\"%s\",\"state_hash\":\"%08lx\"}",
                         fl_phase_name(state), (unsigned)state->wave,
                         (unsigned)state->gold, (unsigned)state->lives,
                         (unsigned long)state->score,
@@ -1211,7 +1265,7 @@ int fl_state_json(const fl_state_t *state, char *output, size_t capacity)
                         (unsigned long)state->score_bonus,
                         (unsigned)state->leaks,
                         (unsigned long)state->kills, (unsigned long)state->tick,
-                        (unsigned)state->speed,
+                        (unsigned)state->speed, sound,
                         (unsigned long)fl_state_hash(state));
     return (size < 0 || (size_t)size >= capacity) ? -1 : size;
 }

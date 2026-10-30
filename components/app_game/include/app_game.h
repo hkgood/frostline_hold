@@ -57,6 +57,11 @@ app_game_snapshot_t app_game_read(app_game_handle_t handle);
 /** Copy the full game model out for rendering. NULL handle or out is a no-op. */
 void app_game_get_model(app_game_handle_t handle, fl_state_t *out);
 
+/** Take the events raised since the last call and clear them. The runtime
+ * uses this to drive sound and haptics without the model knowing about
+ * either. NULL handle returns zero. */
+uint32_t app_game_take_events(app_game_handle_t handle);
+
 #ifdef __cplusplus
 }
 #endif

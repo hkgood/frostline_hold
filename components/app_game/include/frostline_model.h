@@ -175,6 +175,11 @@ typedef struct {
     uint32_t seed;
     uint32_t kills;
     uint32_t prep_ticks;   /* ticks left in the preparation phase */
+    /* What happened during the last update, as FL_EVENT_* bits. The runtime
+     * clears and consumes them once per frame. */
+    uint32_t events;
+    uint32_t event_serial;   /* counts the updates that raised anything */
+    uint8_t last_kill_kind;  /* which enemy died last, for the kill sound */
     fl_hero_t heroes[FL_MAX_HEROES];
     uint8_t selected_hero;  /* hero kind armed in the build bar, 0xFF none */
     uint8_t batch_index;   /* index into the current wave's batch list */
@@ -207,6 +212,31 @@ void fl_toggle_pause(fl_state_t *state);
 #define FL_SHOT_BURN   0x02
 #define FL_SHOT_STUN   0x04
 
+/* Events raised during a simulation step.
+ *
+ * The model itself stays free of any presentation concern: it only says what
+ * happened. The runtime turns these bits into sound, haptics and effects, so
+ * the same simulation drives the device and the Host simulator. */
+#define FL_EVENT_BUILT       (1u << 0)   /* a tower went up */
+#define FL_EVENT_UPGRADED    (1u << 1)   /* a tower took an upgrade */
+#define FL_EVENT_SOLD        (1u << 2)   /* a tower was sold */
+#define FL_EVENT_DENIED      (1u << 3)   /* not enough gold */
+#define FL_EVENT_SHOT_GUARD  (1u << 4)   /* a guard tower fired */
+#define FL_EVENT_SHOT_FROST  (1u << 5)   /* a frost tower fired */
+#define FL_EVENT_SHOT_SIEGE  (1u << 6)   /* a siege tower fired */
+#define FL_EVENT_HERO_SHOT   (1u << 7)   /* the hero struck */
+#define FL_EVENT_IMPACT      (1u << 8)   /* an area blast went off */
+#define FL_EVENT_KILLED      (1u << 9)   /* an enemy died */
+#define FL_EVENT_LEAK        (1u << 10)  /* an enemy reached the gate */
+#define FL_EVENT_WAVE_START  (1u << 11)  /* a wave began */
+#define FL_EVENT_WAVE_CLEAR  (1u << 12)  /* a wave was cleared */
+#define FL_EVENT_HERO_HIT    (1u << 13)  /* the hero was struck */
+#define FL_EVENT_HERO_DOWN   (1u << 14)  /* the hero fell */
+#define FL_EVENT_NOVA        (1u << 15)  /* the frost nova went off */
+#define FL_EVENT_WON         (1u << 16)  /* the run was won */
+#define FL_EVENT_LOST        (1u << 17)  /* the run was lost */
+#define FL_EVENT_HERO_PLACED (1u << 18)  /* a hero took a post */
+
 /* The stats a tower actually shoots with, after its chosen upgrades. */
 typedef struct {
     int16_t damage;
@@ -222,6 +252,11 @@ typedef struct {
 } fl_tower_stats_t;
 
 /* --- gameplay -------------------------------------------------------- */
+/** Take the events raised since the last call and clear them.
+ *
+ * Events accumulate across input and update, so a tower built by a tap and
+ * the shot it fires in the same frame are both reported. */
+uint32_t fl_events_take(fl_state_t *state);
 /** The stats of a tower with the upgrades it has taken into account. */
 fl_tower_stats_t fl_tower_stats(const fl_tower_t *tower);
 /** What it costs to reach the next level; 0 when the tower is maxed. */
@@ -246,6 +281,10 @@ int fl_star_rating(const fl_state_t *state);
 /* --- introspection --------------------------------------------------- */
 uint32_t fl_state_hash(const fl_state_t *state);
 int fl_state_json(const fl_state_t *state, char *output, size_t capacity);
+/** The state as JSON, plus the name of the sound the Host preview should
+ * play. The name comes from the runtime; the model only carries it. */
+int fl_state_json_sfx(const fl_state_t *state, const char *sfx,
+                      char *output, size_t capacity);
 const char *fl_phase_name(const fl_state_t *state);
 
 /* --- score ------------------------------------------------------------ */

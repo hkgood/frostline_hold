@@ -87,3 +87,11 @@ void app_game_get_model(app_game_handle_t handle, fl_state_t *out)
     }
     *out = handle->model;
 }
+
+uint32_t app_game_take_events(app_game_handle_t game)
+{
+    if (!game) {
+        return 0;
+    }
+    return fl_events_take(&game->model);
+}

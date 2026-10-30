@@ -420,6 +420,116 @@ static void test_speed_multiplier_advances_faster(void)
     assert(fast.tick == slow.tick * 3);
 }
 
+/* --- events ---------------------------------------------------------- */
+
+static void test_building_raises_an_event(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(fl_events_take(&state) == 0);
+    assert(fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    uint32_t events = fl_events_take(&state);
+    assert(events & FL_EVENT_BUILT);
+    /* Taking the events clears them. */
+    assert(fl_events_take(&state) == 0);
+}
+
+static void test_building_without_the_gold_is_denied(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.gold = 10;
+    assert(!fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    uint32_t events = fl_events_take(&state);
+    assert(events & FL_EVENT_DENIED);
+    assert(!(events & FL_EVENT_BUILT));
+}
+
+static void test_upgrading_and_selling_raise_events(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    fl_events_take(&state);
+    assert(fl_upgrade_tower(&state, 0, 0));
+    uint32_t events = fl_events_take(&state);
+    assert(events & FL_EVENT_UPGRADED);
+    assert(fl_sell_tower(&state, 0));
+    events = fl_events_take(&state);
+    assert(events & FL_EVENT_SOLD);
+}
+
+static void test_a_leak_raises_an_event(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    bool leaked = false;
+    for (int i = 0; i < 4000 && !leaked; ++i) {
+        fl_state_update(&state);
+        if (fl_events_take(&state) & FL_EVENT_LEAK) {
+            leaked = true;
+        }
+    }
+    assert(leaked);
+    assert(state.lives < 20);
+}
+
+static void test_a_kill_raises_an_event_and_names_the_enemy(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    assert(fl_build_tower(&state, 50, 192, FL_TOWER_GUARD));
+    bool killed = false;
+    for (int i = 0; i < 3000 && !killed; ++i) {
+        fl_state_update(&state);
+        if (fl_events_take(&state) & FL_EVENT_KILLED) {
+            killed = true;
+        }
+    }
+    assert(killed);
+    assert(state.last_kill_kind == FL_ENEMY_WOLF);
+}
+
+static void test_a_wave_start_raises_an_event(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    bool started = false;
+    for (int i = 0; i < 700 && !started; ++i) {
+        fl_state_update(&state);
+        if (fl_events_take(&state) & FL_EVENT_WAVE_START) {
+            started = true;
+        }
+    }
+    assert(started);
+}
+
+static void test_events_survive_across_input_and_update(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    /* A tap builds the tower, then the simulation runs in the same frame. The
+     * runtime only reads the events afterwards, so both must be there. */
+    assert(fl_build_tower(&state, 58, 108, FL_TOWER_GUARD));
+    for (int i = 0; i < 10; ++i) {
+        fl_state_update(&state);
+    }
+    uint32_t events = fl_events_take(&state);
+    assert(events & FL_EVENT_BUILT);
+    assert(state.event_serial > 0);
+}
+
+static void test_the_frost_nova_raises_an_event(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(fl_build_hero(&state, 56, 232, FL_HERO_WARDEN));
+    fl_events_take(&state);
+    assert(fl_cast_hero_skill(&state, 0));
+    assert(fl_events_take(&state) & FL_EVENT_NOVA);
+}
+
 int main(void)
 {
     test_reset_starts_in_prep();
@@ -447,7 +557,14 @@ int main(void)
     test_state_hash_is_stable_for_the_same_seed();
     test_pointer_selects_a_tower_card();
     test_pointer_builds_on_a_spot();
-    test_speed_multiplier_advances_faster();
+    test_building_raises_an_event();
+    test_building_without_the_gold_is_denied();
+    test_upgrading_and_selling_raise_events();
+    test_a_leak_raises_an_event();
+    test_a_kill_raises_an_event_and_names_the_enemy();
+    test_a_wave_start_raises_an_event();
+    test_events_survive_across_input_and_update();
+    test_the_frost_nova_raises_an_event();    test_speed_multiplier_advances_faster();
     printf("model tests passed\n");
     return 0;
 }

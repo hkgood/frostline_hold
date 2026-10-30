@@ -1,5 +1,6 @@
 idf_component_register(SRCS "app_game_runtime.c" "frostline_view.c"
     "frostline_record.c"
+    "frostline_audio.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "private"
     REQUIRES examples_common

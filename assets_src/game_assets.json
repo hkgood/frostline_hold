@@ -1,5 +1,6 @@
 {
   "schema": "mosaico-game-assets/v1",
+  "limit_bytes": 4194304,
   "atlases": [
     {
       "config": "atlas_terrain.json",
@@ -38,5 +39,63 @@
     }
   ],
   "maps": [],
-  "sounds": []
+  "sounds": [
+    {
+      "source": "ui_tap.wav"
+    },
+    {
+      "source": "ui_deny.wav"
+    },
+    {
+      "source": "build.wav"
+    },
+    {
+      "source": "upgrade.wav"
+    },
+    {
+      "source": "sell.wav"
+    },
+    {
+      "source": "shot_guard.wav"
+    },
+    {
+      "source": "shot_frost.wav"
+    },
+    {
+      "source": "shot_siege.wav"
+    },
+    {
+      "source": "impact.wav"
+    },
+    {
+      "source": "kill.wav"
+    },
+    {
+      "source": "leak.wav"
+    },
+    {
+      "source": "wave_start.wav"
+    },
+    {
+      "source": "wave_clear.wav"
+    },
+    {
+      "source": "hero_hit.wav"
+    },
+    {
+      "source": "hero_down.wav"
+    },
+    {
+      "source": "nova.wav"
+    },
+    {
+      "source": "win.wav"
+    },
+    {
+      "source": "lose.wav"
+    },
+    {
+      "source": "music_battle.wav"
+    }
+  ]
 }

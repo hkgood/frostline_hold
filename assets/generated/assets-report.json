@@ -76,9 +76,161 @@
       "type": "atlas",
       "variants": 0,
       "width": 176
+    },
+    {
+      "bits": 16,
+      "bytes": 4340,
+      "file": "ui_tap.sound",
+      "rate": 24000,
+      "samples": 2160,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 12500,
+      "file": "ui_deny.sound",
+      "rate": 24000,
+      "samples": 6240,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 16340,
+      "file": "build.sound",
+      "rate": 24000,
+      "samples": 8160,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 28820,
+      "file": "upgrade.sound",
+      "rate": 24000,
+      "samples": 14400,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 20180,
+      "file": "sell.sound",
+      "rate": 24000,
+      "samples": 10080,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 6740,
+      "file": "shot_guard.sound",
+      "rate": 24000,
+      "samples": 3360,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 14420,
+      "file": "shot_frost.sound",
+      "rate": 24000,
+      "samples": 7200,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 14420,
+      "file": "shot_siege.sound",
+      "rate": 24000,
+      "samples": 7200,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 26420,
+      "file": "impact.sound",
+      "rate": 24000,
+      "samples": 13200,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 9620,
+      "file": "kill.sound",
+      "rate": 24000,
+      "samples": 4800,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 45620,
+      "file": "leak.sound",
+      "rate": 24000,
+      "samples": 22800,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 4,
+      "bytes": 13824,
+      "file": "wave_start.sound",
+      "rate": 24000,
+      "samples": 27600,
+      "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 16,
+      "bytes": 38420,
+      "file": "wave_clear.sound",
+      "rate": 24000,
+      "samples": 19200,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 12500,
+      "file": "hero_hit.sound",
+      "rate": 24000,
+      "samples": 6240,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 26420,
+      "file": "hero_down.sound",
+      "rate": 24000,
+      "samples": 13200,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 4,
+      "bytes": 12024,
+      "file": "nova.sound",
+      "rate": 24000,
+      "samples": 24000,
+      "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 4,
+      "bytes": 21624,
+      "file": "win.sound",
+      "rate": 24000,
+      "samples": 43200,
+      "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 4,
+      "bytes": 20424,
+      "file": "lose.sound",
+      "rate": 24000,
+      "samples": 40800,
+      "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 4,
+      "bytes": 279109,
+      "file": "music_battle.sound",
+      "rate": 24000,
+      "samples": 558171,
+      "type": "audio_ima_adpcm"
     }
   ],
-  "limit_bytes": 1048576,
+  "limit_bytes": 4194304,
   "schema": "mosaico-assets-report/v1",
-  "total_bytes": 837356
+  "total_bytes": 1461121
 }

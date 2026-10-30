@@ -6,6 +6,7 @@
     "components/app_game/frostline_model.c",
     "components/app_game_runtime/app_game_runtime.c",
     "components/app_game_runtime/frostline_record.c",
+    "components/app_game_runtime/frostline_audio.c",
     "components/app_game_runtime/frostline_view.c"
   ]
 }

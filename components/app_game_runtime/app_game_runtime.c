@@ -6,6 +6,7 @@
 #include "../app_game/include/app_game.h"
 #include "include/frostline_view.h"
 #include "include/frostline_record.h"
+#include "include/frostline_audio.h"
 #include "private/game_config.h"
 #include "raylib_lite_raylib.h"
 #if !defined(RAYLIB_LITE_GAME_NATIVE)
@@ -15,6 +16,7 @@
 typedef struct {
     app_game_handle_t game;
     frostline_record_t record;
+    frostline_audio_t audio;
     bool recorded;   /* the finished run has already been written down */
 } host_state_t;
 
@@ -39,6 +41,7 @@ static int initialize(void *value, const char *asset_root)
         return -1;
     }
     frostline_record_load(&state->record);
+    frostline_audio_init(&state->audio);
     InitWindow(GAME_WIDTH, GAME_HEIGHT, GAME_NAME);
     SetTargetFPS(GAME_TICK_HZ);
     return 0;
@@ -47,6 +50,7 @@ static int initialize(void *value, const char *asset_root)
 static void shutdown(void *value)
 {
     host_state_t *state = value;
+    frostline_audio_shutdown(&state->audio);
     frostline_view_shutdown();
     app_game_destroy(&state->game);
 }
@@ -59,6 +63,9 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
     }
     if (event->type == RAYLIB_LITE_GAME_INPUT_POINTER && event->track_id == 0) {
         app_game_set_pointer(state->game, event->x, event->y, event->pressed);
+        if (event->pressed) {
+            frostline_audio_tap(&state->audio);
+        }
     } else if (event->type == RAYLIB_LITE_GAME_INPUT_CONTROL) {
         switch (event->code) {
         case RAYLIB_LITE_GAME_CONTROL_PAUSE: app_game_set_paused(state->game, true); break;
@@ -84,9 +91,18 @@ static void update(void *value)
 {
     host_state_t *state = value;
     app_game_update(state->game);
-    /* When a run ends, write it down if it beat the record. */
+    /* What the simulation did this frame drives the sound and the motor. */
     fl_state_t model;
     app_game_get_model(state->game, &model);
+    fl_audio_frame_t frame;
+    frame.events = app_game_take_events(state->game);
+    frame.tick = model.tick;
+    frame.wave_active = (model.phase == FL_PHASE_WAVE) ? 1u : 0u;
+    frame.run_over = (model.phase == FL_PHASE_WON || model.phase == FL_PHASE_LOST)
+                     ? 1u : 0u;
+    frame.kill_kind = model.last_kill_kind;
+    frostline_audio_update(&state->audio, &frame);
+    /* When a run ends, write it down if it beat the record. */
     if (model.phase != FL_PHASE_WON || state->recorded) {
         return;
     }
@@ -141,8 +157,10 @@ static int state_json(const void *value, char *output, size_t capacity)
         return -1;
     }
     fl_state_t model;
-    app_game_get_model(((const host_state_t *)value)->game, &model);
-    int size = fl_state_json(&model, output, capacity);
+    const host_state_t *state = value;
+    app_game_get_model(state->game, &model);
+    int size = fl_state_json_sfx(&model, frostline_audio_name(&state->audio),
+                                 output, capacity);
     if (size < 0) {
         return -1;
     }
