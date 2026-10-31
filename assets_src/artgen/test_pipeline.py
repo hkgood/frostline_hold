@@ -37,6 +37,14 @@ SPRITE_ATLASES = ("units.atlas", "props.atlas", "fx.atlas", "props_husk.atlas",
                   "castle_fx.atlas")
 
 
+def _sdkconfig_int(key, default):
+    """The project's override of a device capacity, else the engine default."""
+    for line in (PROJECT / "sdkconfig.defaults").read_text().splitlines():
+        if line.startswith(key + "="):
+            return int(line.split("=", 1)[1])
+    return default
+
+
 def _atlas_colours(path):
     data = path.read_bytes()
     magic, width, height, frames, flags, rgb_len, alpha_len = ATLAS_HEADER.unpack_from(data, 0)
@@ -121,12 +129,13 @@ class TestAssetPipeline(unittest.TestCase):
         at start-up. The native build also packs under a 10 MiB limit."""
         packed = [p for p in self.output.iterdir()
                   if p.suffix in (".atlas", ".sound", ".map", ".wall", ".jpg")]
-        capacity = 32
-        for line in (PROJECT / "sdkconfig.defaults").read_text().splitlines():
-            if line.startswith("CONFIG_RAYLIB_LITE_MAX_ASSETS="):
-                capacity = int(line.split("=", 1)[1])
-        self.assertLessEqual(len(packed), capacity)
+        self.assertLessEqual(len(packed), _sdkconfig_int("CONFIG_RAYLIB_LITE_MAX_ASSETS", 32))
         self.assertLessEqual(sum(p.stat().st_size for p in packed), 10 * 1024 * 1024)
+
+    def test_the_audio_mixer_can_hold_every_sound(self):
+        """The device mixer refuses clips past its capacity, silently."""
+        sounds = [p for p in self.output.iterdir() if p.suffix == ".sound"]
+        self.assertLessEqual(len(sounds), _sdkconfig_int("CONFIG_ESP_MOSAICO_AUDIO_CLIPS", 20))
 
     def test_generated_sources_contain_only_ink_paper_and_transparent(self):
         from artgen.canvas import INK_RGB, PAPER_RGB

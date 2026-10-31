@@ -169,12 +169,14 @@ void frostline_audio_init(frostline_audio_t *audio)
 #if defined(RAYLIB_LITE_GAME_NATIVE)
     InitAudioDevice();
     if (IsAudioDeviceReady()) {
-        for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
-            s_sounds[i] = LoadSound(SFX_ASSETS[i]);
-        }
+        /* The mixer holds CONFIG_ESP_MOSAICO_AUDIO_CLIPS clips and refuses
+         * the rest, so the themes load first and a short cue drops instead. */
         for (unsigned i = 1; i < FL_MUSIC_COUNT; ++i) {
             s_music[i] = LoadMusicStream(MUSIC_ASSETS[i]);
             SetMusicVolume(s_music[i], MUSIC_FULL);
+        }
+        for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
+            s_sounds[i] = LoadSound(SFX_ASSETS[i]);
         }
         audio->ready = true;
     }

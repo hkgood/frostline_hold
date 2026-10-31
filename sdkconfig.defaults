@@ -74,3 +74,5 @@ CONFIG_TINYUSB_CDC_COUNT=2
 # 10 atlases + 30 sounds are embedded; registrations past the engine's
 # default of 32 fail silently and the game cannot start.
 CONFIG_RAYLIB_LITE_MAX_ASSETS=64
+# 27 cues + 3 themes; the mixer's default of 20 clips dropped every theme.
+CONFIG_ESP_MOSAICO_AUDIO_CLIPS=32
