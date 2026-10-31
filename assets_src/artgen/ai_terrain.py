@@ -62,130 +62,201 @@ def _threshold(source, size=480):
     return _dither(_plate_grey(source, size))
 
 
-# The castle plate: its own origin relative to the goal, and where the view
-# hangs the moving banner and brazier fire on it. The view keeps a copy of
-# these offsets; they have to agree.
-CASTLE_W = 118
+# --- The castle at the end of the road ----------------------------------------
+# An AI engraving (ai/castle_source.jpg), drawn bold so it survives being
+# shrunk to ~100 px, seen from the upper left with its gate in the west face
+# of the gatehouse, where every road arrives. The plate is a box at
+# CASTLE_ORIGIN; the view hangs the moving banner and brazier fire on it and
+# keeps a copy of these offsets, so they have to agree.
+CASTLE_SOURCE = AI_DIR / "castle_source.jpg"
+CASTLE_SCALE = 0.13
+CASTLE_SOURCE_GATE = (685, 715)   # foot of the gate in the source art, px
+CASTLE_W = 122
 CASTLE_H = 106
-CASTLE_GATE_X = 92        # gate centre, local x; sits on the goal point
-CASTLE_BASE_Y = 100       # ground line, local y
-CASTLE_ORIGIN = (geom.GOAL[0] - CASTLE_GATE_X, geom.GOAL[1] + 16 - CASTLE_BASE_Y)
-CASTLE_POLE_TOP = (CASTLE_GATE_X + 1, 12)
-CASTLE_BRAZIERS = ((66, CASTLE_BASE_Y - 8), (112, CASTLE_BASE_Y - 6))
+CASTLE_ORIGIN = (geom.GOAL[0] - 92, geom.GOAL[1] + 16 - 100)
+CASTLE_GATE = (90, 92)            # foot of the gate, local
+CASTLE_GATE_LEFT = 84             # west jamb of the gate, local x
+CASTLE_ROAD = (76, 92)            # local rows the road runs through
+CASTLE_POLE_TOP = (99, 21)
+CASTLE_BRAZIERS = ((76, 74), (78, 99))
+
+# Which look each chapter's castle has, by stage: the journey gets colder,
+# and at the end the hold has been fought over.
+CASTLE_LOOK_BY_STAGE = ("plain", "plain", "plain", "plain",
+                        "frozen", "frozen", "battered", "battered")
+# Where icicles hang: (x0, y0, x1, y1) lines along the eaves, local px.
+CASTLE_EAVES = ((81, 55, 99, 63), (101, 62, 119, 52), (21, 49, 50, 50),
+                (50, 60, 80, 62))
 
 
-def _crenels(tc, x0, x1, top, depth, albedo=0.95):
-    """A battlement: merlons with snow on their heads and dark embrasures."""
-    x = x0
-    while x + 4 <= x1:
-        S.box(tc, x, top - 5, 4, 5, depth, albedo, top_albedo=1.35)
-        x += 7
+def _castle_tone(value, x, y):
+    """Ink or paper for a grey level: engraved lines, not dots.
+
+    The darkest greys print solid; the middle ones become diagonal hatching
+    that thins out towards the light, the way the maps' pen shading does.
+    """
+    if value < 45:
+        return BLACK
+    if value < 100:
+        return BLACK if (x + y) % 3 != 0 else WHITE
+    if value < 165:
+        return BLACK if (x + y) % 3 == 0 else WHITE
+    return WHITE
 
 
-def _round_tower(tc, cx, top, base, r, roof, seed):
-    """A drum tower with coursed stone, a slit window and a slate cone."""
-    S.cylinder(tc, cx, top, base, r, 0.95,
-               tex=S.masonry(r, course=6, blocks=7, seed=seed))
-    S.cylinder(tc, cx, top - 4, top + 1, r + 2, 0.9,
-               tex=S.masonry(r + 2, course=5, blocks=9, seed=seed + 1))
-    for u in (-0.9, -0.45, 0.0, 0.45, 0.9):
-        bx = cx + u * (r + 1)
-        S.capsule(tc, bx, top + 1, bx - u, top + 4, 1.4, 0.55)
-    S.cone(tc, cx, top - roof, top - 3, r + 4, 0.78,
-           tex=S.shingles(rows=6, depth=0.4))
-    S.capsule(tc, cx, top - roof - 6, cx, top - roof + 1, 1.2, 0.6)
-    S.glint(tc, int(cx), int(top - roof - 7), 0)
-    for wy in range(int(top) + 8, int(base) - 10, 14):
-        _gate_dark(tc, cx - r * 0.35, wy, 2, 6)
+def _castle_silhouette(source):
+    """Which source pixels are castle: everything not reached from the border.
+
+    The paper round the drawing and the grey road the AI drew in front of
+    the gate are both light, so a flood fill through light pixels from the
+    edge takes them away and leaves the building and its cast shadow.
+    """
+    width, height = source.size
+    pixels = source.load()
+    outside = bytearray(width * height)
+    stack = [(x, y) for x in range(width) for y in (0, height - 1)]
+    stack += [(x, y) for y in range(height) for x in (0, width - 1)]
+    while stack:
+        x, y = stack.pop()
+        if not (0 <= x < width and 0 <= y < height):
+            continue
+        index = y * width + x
+        if outside[index] or pixels[x, y] < 150:
+            continue
+        outside[index] = 1
+        stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+    return Image.frombytes("L", source.size, bytes(0 if o else 255 for o in outside))
 
 
-def _gate_dark(tc, x, y, w, h, tone=0.03):
-    for yy in range(int(y), int(y + h)):
-        for xx in range(int(x), int(x + w)):
-            tc.put(xx, yy, tone)
-    # A lit sill under the opening.
-    for xx in range(int(x) - 1, int(x + w) + 1):
-        tc.put(xx, int(y + h), 1.0)
+def _castle_base():
+    """The castle as a bitmap plus its mask, both CASTLE_W x CASTLE_H."""
+    source = Image.open(CASTLE_SOURCE).convert("L")
+    mask = _castle_silhouette(source)
+    # Thicken the pen lines first, so they still close at a seventh of the size.
+    inked = source.filter(ImageFilter.MinFilter(3))
+    size = (round(source.width * CASTLE_SCALE), round(source.height * CASTLE_SCALE))
+    grey = inked.resize(size, Image.BOX).filter(
+        ImageFilter.UnsharpMask(radius=0.8, percent=120, threshold=2))
+    small_mask = mask.resize(size, Image.BOX)
+    ox = CASTLE_GATE[0] - round(CASTLE_SOURCE_GATE[0] * CASTLE_SCALE)
+    oy = CASTLE_GATE[1] - round(CASTLE_SOURCE_GATE[1] * CASTLE_SCALE)
 
-
-def _castle_plate():
-    """The hold, modelled as lit stone like the towers the player builds."""
-    tc = S.ToneCanvas(CASTLE_W, CASTLE_H)
-    base = CASTLE_BASE_Y
-    gate = CASTLE_GATE_X
-    S.shadow_ellipse(tc, 70, base + 2, 52, 5, 0.55)
-
-    # Left keep: the tallest mass, a round tower with a slate spire.
-    _round_tower(tc, 22, 40, base, 15, 26, seed=31)
-
-    # Curtain wall with a wall-walk and battlements.
-    wall = S.flat_masonry(course=6, block=9, seed=5)
-    # Set back between the towers, so it sits a step darker than they do.
-    S.box(tc, 36, 58, 42, base - 58, 6, 0.72, tex=wall, top_albedo=1.2)
-    _crenels(tc, 37, 78, 58, 3, albedo=0.8)
-    # A buttress on the curtain, so the long wall has a rhythm.
-    S.box(tc, 50, 70, 6, base - 70, 4, 0.85, tex=wall, top_albedo=1.25)
-    _gate_dark(tc, 62, 68, 3, 7)
-
-    # Gatehouse: a square tower astride the road.
-    S.box(tc, gate - 15, 44, 30, base - 44, 8, 0.95,
-          tex=S.flat_masonry(course=6, block=8, seed=9), top_albedo=1.2)
-    _crenels(tc, gate - 15, gate + 15, 44, 3)
-    _gate_dark(tc, gate - 9, 54, 3, 8)
-    _gate_dark(tc, gate + 6, 54, 3, 8)
-
-    # The gate arch: voussoirs round a dark mouth, the portcullis half up.
-    arch_top = base - 26
-    for y in range(arch_top - 3, base):
-        for x in range(gate - 10, gate + 11):
-            dx = (x + 0.5 - gate) / 10.0
-            dy = (y + 0.5 - (arch_top + 7)) / 10.0
-            inside_outer = dy > 0 or dx * dx + dy * dy <= 1.0
-            if not inside_outer:
+    art = Canvas(CASTLE_W, CASTLE_H)
+    solid = [[False] * CASTLE_W for _ in range(CASTLE_H)]
+    gp, mp = grey.load(), small_mask.load()
+    road_top, road_bottom = CASTLE_ROAD
+    for y in range(CASTLE_H):
+        for x in range(CASTLE_W):
+            sx, sy = x - ox, y - oy
+            if not (0 <= sx < size[0] and 0 <= sy < size[1]) or mp[sx, sy] < 128:
                 continue
-            dx2 = (x + 0.5 - gate) / 7.0
-            dy2 = (y + 0.5 - (arch_top + 7)) / 7.0
-            if dy2 > 0 and abs(dx2) <= 1.0 or dx2 * dx2 + dy2 * dy2 <= 1.0:
-                # The opening: dark, with the iron grille hanging in it.
-                bar = (x - gate) % 3 == 0 and y < arch_top + 14
-                rail = y in (arch_top + 6, arch_top + 11)
-                tc.put(x, y, 0.55 if (bar or rail) else 0.02)
-            else:
-                # Wedge stones round the arch, each with its own tone.
-                angle = math.atan2(dy, dx)
-                stone = int((angle + math.pi) / math.pi * 9)
-                tc.put(x, y, 0.9 - 0.25 * (stone % 2) - (0.4 if dx > 0.3 else 0.0))
+            # West of the gate the road runs in front of the keep and the
+            # curtain, so it hides their feet.
+            if x < CASTLE_GATE_LEFT and road_top <= y <= road_bottom + 6:
+                continue
+            solid[y][x] = True
+            art.set(x, y, _castle_tone(gp[sx, sy], x, y))
+    return art, solid
 
-    # Right flanking tower, slimmer, kept clear of the glass corner.
-    _round_tower(tc, 108, 58, base, 8, 16, seed=17)
 
-    # Brazier stands either side of the approach. Fire is drawn by the view.
+def _outline(art, solid):
+    """Ink round the silhouette, paper one pixel outside it."""
+    def inside(x, y):
+        return 0 <= x < CASTLE_W and 0 <= y < CASTLE_H and solid[y][x]
+    halo = []
+    for y in range(CASTLE_H):
+        for x in range(CASTLE_W):
+            edge = [inside(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+            if solid[y][x] and not all(edge):
+                art.set(x, y, BLACK)
+            elif not solid[y][x] and any(edge):
+                halo.append((x, y))
+    return halo
+
+
+def _icicles(art, solid, rng):
+    """Icicles under the eaves: 3-7 px drips in the colour the wall is not."""
+    for x0, y0, x1, y1 in CASTLE_EAVES:
+        steps = max(1, abs(x1 - x0))
+        for i in range(0, steps + 1, 2):
+            x = x0 + (x1 - x0) * i // steps
+            y = y0 + (y1 - y0) * i // steps
+            if not solid[y][x]:
+                continue
+            ink = art.get(x, y + 3) == WHITE
+            length = 3 + int(rng.random() * 5)
+            for k in range(length):
+                if y + k < CASTLE_H and solid[y + k][x]:
+                    art.set(x, y + k, BLACK if ink else WHITE)
+                    # The root of a long icicle is two pixels thick.
+                    if k < length // 2 and length > 4 and solid[y + k][x + 1]:
+                        art.set(x + 1, y + k, BLACK if ink else WHITE)
+
+
+def _battle_scars(art, solid, rng):
+    """Cracks across the lit stone, a breach in the curtain, soot over the gate."""
+    # Zigzag cracks, two pixels wide, down the lit faces of keep and gatehouse.
+    for x, y, length in ((32, 56, 18), (24, 66, 10), (92, 64, 8)):
+        cx = x
+        for k in range(length):
+            cx += (1 if (k // 3) % 2 else -1) if k % 3 == 0 else 0
+            for dx in (0, 1):
+                if solid[y + k][cx + dx]:
+                    art.set(cx + dx, y + k, BLACK)
+    # A breach knocked out of the curtain wall's battlement: a ragged notch.
+    for y in range(54, 66):
+        for x in range(58, 70):
+            if y - 54 < 12 - abs(x - 64) * 1.6:
+                solid[y][x] = False
+    # Soot licked up the wall over the gate.
+    for y in range(58, 72):
+        for x in range(CASTLE_GATE_LEFT - 1, CASTLE_GATE_LEFT + 13):
+            if solid[y][x] and rng.random() < 0.15 + 0.04 * (y - 58):
+                art.set(x, y, BLACK)
+
+
+def _braziers(art, solid):
+    """Iron fire-baskets on posts either side of the road. The view lights them."""
     for bx, by in CASTLE_BRAZIERS:
-        S.capsule(tc, bx, by, bx, by + 8, 1.8, 0.6)
-        S.cylinder(tc, bx, by - 3, by, 4.5, 0.75, cap=0.15, spec=0.4)
-
-    # The banner pole on the gatehouse roof. The cloth moves; the view adds it.
-    S.capsule(tc, CASTLE_POLE_TOP[0], 44, CASTLE_POLE_TOP[0],
-              CASTLE_POLE_TOP[1], 1.6, 0.7, spec=0.4)
-    S.ellipsoid(tc, CASTLE_POLE_TOP[0], CASTLE_POLE_TOP[1] - 1, 2, 2, 1.0,
-                spec=0.9)
-
-    # Snow drifted against the foot of every wall.
-    S.occlude(tc, base, 10, 0.35)
-    for x0, x1 in ((8, 36), (36, 78), (gate + 11, 118)):
-        for x in range(x0, x1):
-            lift = int(1.5 + 1.5 * math.sin(x * 0.7))
-            for dy in range(lift):
-                if tc.get(x, base - dy) is not None:
-                    tc.put(x, base - dy, 1.0 - dy * 0.05)
-    return tc
+        for y in range(by - 4, min(by + 9, CASTLE_H)):
+            for x in range(bx - 4, min(bx + 5, CASTLE_W)):
+                bowl = by - 3 <= y <= by and abs(x - bx) <= 3 - (y - by + 3) // 3
+                post = y > by and abs(x - bx) <= 1
+                if bowl or post:
+                    solid[y][x] = True
+                    art.set(x, y, BLACK)
+                elif (by - 4 <= y <= by + 1 and abs(x - bx) <= 4
+                      or y > by and abs(x - bx) <= 2):
+                    art.set(x, y, WHITE)
+                    solid[y][x] = True
+        art.set(bx - 1, by - 3, WHITE)          # a lit rim
+        art.set(bx, by - 3, WHITE)
 
 
-def draw_gatehouse(canvas):
-    """Bake the shaded castle into the map at the end of the road."""
+def castle_plate(look="plain"):
+    """The castle for one look, as (bitmap, mask) in its CASTLE_W box."""
+    rng = random.Random(0xCA57)
+    art, solid = _castle_base()
+    if look in ("frozen", "battered"):
+        _icicles(art, solid, rng)
+    if look == "battered":
+        _battle_scars(art, solid, rng)
+    _braziers(art, solid)
+    halo = _outline(art, solid)
+    return art, solid, halo
+
+
+def draw_gatehouse(canvas, look="plain"):
+    """Bake the castle into the map at the end of the road."""
     ox, oy = CASTLE_ORIGIN
-    plate = _castle_plate().to_canvas(origin=(ox, oy))
-    canvas.blit(plate, ox, oy)
+    art, solid, halo = castle_plate(look)
+    for x, y in halo:
+        if 0 <= ox + x < canvas.width and 0 <= oy + y < canvas.height:
+            canvas.set(ox + x, oy + y, WHITE)
+    for y in range(CASTLE_H):
+        for x in range(CASTLE_W):
+            if solid[y][x] and 0 <= ox + x < canvas.width:
+                canvas.set(ox + x, oy + y, art.get(x, y))
 
 
 def clear_disc(canvas, cx, cy, radius, margin, rng):
@@ -350,10 +421,14 @@ def build_level_background(level):
 
     _clear_sites(canvas, level, rng)
 
-    # The gatehouse sits at the end of the road.
+    # The castle sits at the end of the road. Clearing round it takes the
+    # road's last stretch too, so cut that again: it runs in front of the
+    # keep and into the gate.
     gx, gy = geom.GOAL
     clear_disc(canvas, gx - 8, gy - 6, 58, 16, rng)
-    draw_gatehouse(canvas)
+    carve_road(canvas, [[(gx - 100, gy), (gx, gy)]], rng)
+    look = CASTLE_LOOK_BY_STAGE[level.get("stage", 0)]
+    draw_gatehouse(canvas, look)
     return canvas
 
 

@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE.parent))
 
 from artgen import levels as campaign  # noqa: E402
 from artgen.ai_terrain import (  # noqa: E402
-    AI_DIR, build_campaign_background, build_level_background,
+    AI_DIR, CASTLE_SOURCE, build_campaign_background, build_level_background,
 )
 from artgen.canvas import BLACK  # noqa: E402
 
@@ -35,6 +35,7 @@ CODE_INPUTS = ("ai_terrain.py", "canvas.py", "shade.py", "levels.py",
 def _plates():
     names = [level["plate"] for level in campaign.LEVELS]
     names += list(campaign.CAMPAIGN_PLATES)
+    names.append(CASTLE_SOURCE.name)
     return sorted(set(names))
 
 

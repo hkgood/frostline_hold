@@ -21,9 +21,9 @@
  * mirror CASTLE_* in assets_src/artgen/ai_terrain.py and must agree. */
 #define CASTLE_ORIGIN_X (FL_GOAL.x - 92)
 #define CASTLE_ORIGIN_Y (FL_GOAL.y + 16 - 100)
-#define CASTLE_POLE_X (CASTLE_ORIGIN_X + 93)
-#define CASTLE_POLE_TOP (CASTLE_ORIGIN_Y + 12)
-static const int CASTLE_BRAZIERS[2][2] = {{66, 89}, {112, 91}};
+#define CASTLE_POLE_X (CASTLE_ORIGIN_X + 99)
+#define CASTLE_POLE_TOP (CASTLE_ORIGIN_Y + 21)
+static const int CASTLE_BRAZIERS[2][2] = {{76, 74}, {78, 99}};
 
 static const enemy_look_t ENEMY_LOOKS[FL_ENEMY_KIND_COUNT] = {
     [FL_ENEMY_WOLF] = {SHEET_PROPS, 4, NULL},
