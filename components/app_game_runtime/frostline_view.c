@@ -357,6 +357,14 @@ void draw_panel(int x, int y, int w, int h, bool inverted)
     DrawRectangleLines(x, y, w, h, inverted ? FL_INK : FL_PAPER);
 }
 
+/* A right-pointing play triangle of half-height r, centred on (cx, cy). */
+static void draw_play_icon(int cx, int cy, int r, Color color)
+{
+    DrawTriangle((Vector2){(float)(cx - r * 3 / 4), (float)(cy - r)},
+                 (Vector2){(float)(cx - r * 3 / 4), (float)(cy + r)},
+                 (Vector2){(float)(cx + r), (float)cy}, color);
+}
+
 /* Numbers keep the engine's big digits in either language. */
 static void draw_text_centered_engine(const char *text, int center_x, int y,
                                       int size, Color color)
@@ -1311,6 +1319,13 @@ static void draw_hud(const fl_state_t *model)
                     (float)ICON_DRAW_SIZE);
     } else if (hero_placed) {
         DrawText("...", FL_SKILL_BTN_X + 10, FL_SKILL_BTN_Y + 10, 14, FL_PAPER);
+    } else {
+        /* No hero yet: a thin snowflake marks the nova's slot, not a hole. */
+        const int cx = FL_SKILL_BTN_X + FL_SKILL_BTN_W / 2;
+        const int cy = FL_SKILL_BTN_Y + FL_SKILL_BTN_H / 2;
+        DrawLine(cx, cy - 8, cx, cy + 8, FL_PAPER);
+        DrawLine(cx - 7, cy - 4, cx + 7, cy + 4, FL_PAPER);
+        DrawLine(cx - 7, cy + 4, cx + 7, cy - 4, FL_PAPER);
     }
 
     /* The icons are shaded solids with paper highlights, so they read on
@@ -1334,13 +1349,15 @@ static void draw_hud(const fl_state_t *model)
                         (unsigned)fl_wave_count(model)),
              304, 20, 14, FL_PAPER);
 
-    /* Pause and speed buttons. */
-    draw_panel(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H, false);
+    /* The pause button shows what a tap does: two bars while the battle
+     * runs, a lit play triangle while it waits. */
+    draw_panel(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H, model->paused);
     if (model->paused) {
-        draw_panel(FL_PAUSE_BTN_X + 14, FL_BTN_Y + 7, 6, 14, true);
-        draw_panel(FL_PAUSE_BTN_X + 23, FL_BTN_Y + 7, 6, 14, true);
+        draw_play_icon(FL_PAUSE_BTN_X + FL_PAUSE_BTN_W / 2 + 1,
+                       FL_BTN_Y + FL_BTN_H / 2, 8, FL_INK);
     } else {
-        draw_panel(FL_PAUSE_BTN_X + 16, FL_BTN_Y + 7, 7, 14, true);
+        DrawRectangle(FL_PAUSE_BTN_X + 12, FL_BTN_Y + 7, 5, 14, FL_PAPER);
+        DrawRectangle(FL_PAUSE_BTN_X + 20, FL_BTN_Y + 7, 5, 14, FL_PAPER);
     }
     draw_panel(FL_SPEED_BTN_X, FL_BTN_Y, FL_SPEED_BTN_W, FL_BTN_H, false);
     draw_text_centered_engine(TextFormat("%ux", (unsigned)model->speed),
@@ -1573,6 +1590,19 @@ static void draw_pause(const fl_state_t *model)
     };
     const bool enabled[FL_PANEL_BTN_COUNT] = {true, true, true};
     draw_panel_buttons(labels, enabled, FL_PANEL_BTN_NEXT, model->tick);
+
+    /* Resume is the likely tap: the same play triangle as the HUD button
+     * sits before its label, so the two read as one action. */
+    int x, y, w, h;
+    fl_panel_button_rect(FL_PANEL_BTN_NEXT, &x, &y, &w, &h);
+    const char *resume = labels[FL_PANEL_BTN_NEXT];
+    const int label_w = fl_text_width(resume, FL_FONT_LARGE);
+    const int icon_r = 6;
+    const int left = x + (w - label_w - icon_r * 2 - 6) / 2;
+    DrawRectangle(x + 2, y + 2, w - 4, h - 4, FL_PAPER);
+    draw_play_icon(left + icon_r, y + h / 2, icon_r, FL_INK);
+    fl_text_draw(resume, left + icon_r * 2 + 6,
+                 y + (h - fl_text_height(FL_FONT_LARGE)) / 2, FL_FONT_LARGE, FL_INK);
 }
 
 /* ------------------------------------------------------------------ */
