@@ -32,9 +32,9 @@ INK = 0x3165
 PAPER = 0xB575
 # Fully transparent sprite pixels carry no colour of their own.
 CLEAR = 0x0000
-SPRITE_ATLASES = ("units.atlas", "props.atlas", "fx.atlas", "props_husk.atlas",
-                  "props_titan.atlas", "heroes.atlas", "icons.atlas",
-                  "castle_fx.atlas")
+SPRITE_ATLASES = ("units.atlas", "parts.atlas", "props.atlas", "fx.atlas",
+                  "props_husk.atlas", "props_titan.atlas", "heroes.atlas",
+                  "icons.atlas", "castle_fx.atlas")
 
 
 def _sdkconfig_int(key, default):
@@ -105,10 +105,13 @@ class TestAssetPipeline(unittest.TestCase):
                                                  [hex(c) for c in sorted(colours)[:6]]),
             )
 
-    def test_terrain_atlas_is_opaque_with_no_alpha_channel(self):
-        _w, _h, _frames, alpha_len, colours = _atlas_colours(self.output / "terrain.atlas")
+    def test_title_atlas_is_opaque_with_no_alpha_channel(self):
+        _w, _h, _frames, alpha_len, colours = _atlas_colours(self.output / "title.atlas")
         self.assertEqual(alpha_len, 0)
         self.assertEqual(colours, {INK, PAPER})
+
+    def test_the_terrain_is_baked_into_the_firmware_not_packed(self):
+        self.assertFalse((self.output / "terrain.atlas").exists())
 
     def test_sprite_atlases_use_binary_alpha(self):
         for name in SPRITE_ATLASES:
@@ -122,6 +125,8 @@ class TestAssetPipeline(unittest.TestCase):
         self.assertEqual(sprites.FX_ATLAS_CELL, sprites.FX_CELL + 4)
         self.assertEqual(sprites.ICON_ATLAS_CELL, sprites.ICON_CELL + 4)
         self.assertEqual(sprites.CASTLE_FX_ATLAS_CELL, sprites.CASTLE_FX_CELL + 4)
+        from artgen import tower_art
+        self.assertEqual(tower_art.PART_ATLAS_CELL, tower_art.PART_CELL + 4)
 
     def test_the_device_can_register_and_embed_every_asset(self):
         """The firmware embeds every packed file and registers it in a fixed

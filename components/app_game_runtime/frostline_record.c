@@ -10,7 +10,9 @@
  * version 1 record is read as the first level's entry so nothing is lost.
  * Version 3 appends the settings and the enemies already introduced; it
  * starts with the version 2 layout, so a version 2 record is read as its
- * prefix.
+ * prefix. Version 4 grows the campaign from 8 levels to 22 and adds the
+ * display theme. The 8 old levels open the 8 chapters of the new campaign,
+ * every third level, so an old record lands on them.
  */
 #include <stdio.h>
 #include <string.h>
@@ -20,8 +22,21 @@
 #define FROSTLINE_NVS_NAMESPACE "frostline"
 #define FROSTLINE_NVS_KEY "campaign"
 
-/* The version 2 record: version, best scores, stars. */
-#define FROSTLINE_RECORD_V2_SIZE (4u + 4u * FROSTLINE_RECORD_LEVELS + FROSTLINE_RECORD_LEVELS)
+/* Versions 2 and 3 held eight levels. */
+#define FROSTLINE_OLD_LEVELS 8
+#define FROSTLINE_OLD_STRIDE 3   /* old level k is new level 3k */
+
+typedef struct {
+    uint32_t version;
+    uint32_t best_score[FROSTLINE_OLD_LEVELS];
+    uint8_t stars[FROSTLINE_OLD_LEVELS];
+    uint32_t seen_enemies;
+    uint8_t music, sound, haptics, lang, has_settings;
+    uint8_t reserved[3];
+} frostline_record_v3_t;
+
+/* The version 2 record is the version 3 one cut after the stars. */
+#define FROSTLINE_RECORD_V2_SIZE (4u + 4u * FROSTLINE_OLD_LEVELS + FROSTLINE_OLD_LEVELS)
 
 static void frostline_record_clear(frostline_record_t *record)
 {
@@ -29,8 +44,26 @@ static void frostline_record_clear(frostline_record_t *record)
     record->version = FROSTLINE_RECORD_VERSION;
 }
 
-/* Read a stored blob of `size` bytes: the current layout, or a version 2
- * prefix of it. */
+static void frostline_record_from_v3(frostline_record_t *record,
+                                     const frostline_record_v3_t *old,
+                                     bool with_settings)
+{
+    frostline_record_clear(record);
+    for (int i = 0; i < FROSTLINE_OLD_LEVELS; ++i) {
+        record->best_score[i * FROSTLINE_OLD_STRIDE] = old->best_score[i];
+        record->stars[i * FROSTLINE_OLD_STRIDE] = old->stars[i];
+    }
+    if (with_settings) {
+        record->seen_enemies = old->seen_enemies;
+        record->music = old->music;
+        record->sound = old->sound;
+        record->haptics = old->haptics;
+        record->lang = old->lang;
+        record->has_settings = old->has_settings;
+    }
+}
+
+/* Read a stored blob of `size` bytes in any layout since version 2. */
 static bool frostline_record_from_bytes(frostline_record_t *record,
                                         const unsigned char *bytes, size_t size)
 {
@@ -43,10 +76,16 @@ static bool frostline_record_from_bytes(frostline_record_t *record,
         memcpy(record, bytes, sizeof(*record));
         return true;
     }
+    frostline_record_v3_t old;
+    memset(&old, 0, sizeof(old));
+    if (size == sizeof(old) && version == 3) {
+        memcpy(&old, bytes, sizeof(old));
+        frostline_record_from_v3(record, &old, true);
+        return true;
+    }
     if (size == FROSTLINE_RECORD_V2_SIZE && version == 2) {
-        frostline_record_clear(record);
-        memcpy(record, bytes, FROSTLINE_RECORD_V2_SIZE);
-        record->version = FROSTLINE_RECORD_VERSION;
+        memcpy(&old, bytes, FROSTLINE_RECORD_V2_SIZE);
+        frostline_record_from_v3(record, &old, false);
         return true;
     }
     return false;
@@ -80,7 +119,8 @@ bool frostline_record_load(frostline_record_t *record)
     if (!frostline_nvs_open(&handle)) {
         return false;
     }
-    unsigned char bytes[sizeof(*record)];
+    unsigned char bytes[sizeof(*record) > sizeof(frostline_record_v3_t)
+                        ? sizeof(*record) : sizeof(frostline_record_v3_t)];
     size_t size = 0;
     esp_err_t error = nvs_get_blob(handle, FROSTLINE_NVS_KEY, NULL, &size);
     if (error == ESP_OK && size <= sizeof(bytes)) {

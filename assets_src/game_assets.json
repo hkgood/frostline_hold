@@ -3,14 +3,14 @@
   "limit_bytes": 12582912,
   "atlases": [
     {
-      "config": "atlas_terrain.json",
-      "source": "terrain_atlas_source.png",
-      "output": "terrain.atlas"
-    },
-    {
       "config": "atlas_units.json",
       "source": "units_atlas_source.png",
       "output": "units.atlas"
+    },
+    {
+      "config": "atlas_parts.json",
+      "source": "parts_atlas_source.png",
+      "output": "parts.atlas"
     },
     {
       "config": "atlas_props.json",

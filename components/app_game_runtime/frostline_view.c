@@ -25,11 +25,6 @@
 #define CASTLE_POLE_TOP (CASTLE_ORIGIN_Y + 12)
 static const int CASTLE_BRAZIERS[2][2] = {{66, 89}, {112, 91}};
 
-/* Level 1, level 2, then the two level 3 branches. */
-static const char *const TOWER_VARIANT_NAMES[TOWER_VARIANTS] = {
-    "lv1", "lv2", "lv3a", "lv3b",
-};
-
 static const enemy_look_t ENEMY_LOOKS[FL_ENEMY_KIND_COUNT] = {
     [FL_ENEMY_WOLF] = {SHEET_PROPS, 4, NULL},
     [FL_ENEMY_RAIDER] = {SHEET_PROPS, 4, NULL},
@@ -63,7 +58,10 @@ static raylib_lite_atlas_t load_atlas(const char *name)
 void frostline_view_init(void)
 {
     memset(&fv_assets, 0, sizeof(fv_assets));
-    fv_assets.terrain = load_atlas("terrain.atlas");
+    fv_assets.terrain = fl_terrain_init();
+    if (!fv_assets.terrain) {
+        printf("frostline: no memory for the terrain\n");
+    }
     fv_assets.units = load_atlas("units.atlas");
     fv_assets.heroes = load_atlas("heroes.atlas");
     fv_assets.props = load_atlas("props.atlas");
@@ -78,25 +76,15 @@ void frostline_view_init(void)
     fv_assets.logo[FL_LANG_ZH] = raylib_lite_asset_id("logo_zh");
     fv_assets.logo[FL_LANG_EN] = raylib_lite_asset_id("logo_en");
 
-    for (int i = 0; i < FL_LEVEL_COUNT; ++i) {
-        char name[32];
-        snprintf(name, sizeof(name), "map_%s", FL_LEVELS[i].key);
-        fv_assets.maps[i] = raylib_lite_asset_id(name);
-    }
-    fv_assets.campaign_map = raylib_lite_asset_id("map_campaign");
-    for (int i = 0; i < FL_MAX_LEVELS; ++i) {
+    for (int i = 0; i < FL_STAGE_COUNT; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "node_%d", i);
         fv_assets.nodes[i] = raylib_lite_asset_id(name);
     }
     fv_assets.node_locked = raylib_lite_asset_id("node_locked");
+    towers_init();
     for (int kind = FL_TOWER_GUARD; kind < FL_TOWER_KIND_COUNT; ++kind) {
         char name[32];
-        for (int variant = 0; variant < TOWER_VARIANTS; ++variant) {
-            snprintf(name, sizeof(name), "tower_%s_%s", FL_TOWER_KEYS[kind],
-                     TOWER_VARIANT_NAMES[variant]);
-            fv_assets.towers[kind][variant] = raylib_lite_asset_id(name);
-        }
         snprintf(name, sizeof(name), "card_%s", FL_TOWER_KEYS[kind]);
         fv_assets.cards[kind] = raylib_lite_asset_id(name);
     }
@@ -162,7 +150,8 @@ void frostline_view_init(void)
 
 void frostline_view_shutdown(void)
 {
-    raylib_lite_atlas_unload(fv_assets.terrain);
+    fl_terrain_shutdown();
+    towers_shutdown();
     raylib_lite_atlas_unload(fv_assets.units);
     raylib_lite_atlas_unload(fv_assets.heroes);
     raylib_lite_atlas_unload(fv_assets.props);
@@ -177,7 +166,8 @@ void frostline_view_shutdown(void)
 
 bool frostline_view_ready(void)
 {
-    return fv_assets.terrain.texture.id != 0 && fv_assets.units.texture.id != 0
+    return fv_assets.terrain && fv_assets.units.texture.id != 0
+           && towers_ready()
            && fv_assets.heroes.texture.id != 0
            && fv_assets.props.texture.id != 0 && fv_assets.fx.texture.id != 0
            && fv_assets.props_husk.texture.id != 0
@@ -357,6 +347,110 @@ void draw_panel(int x, int y, int w, int h, bool inverted)
     DrawRectangleLines(x, y, w, h, inverted ? FL_INK : FL_PAPER);
 }
 
+/* --- stone plates ------------------------------------------------------ */
+
+/* Where the finger is, so the plate under it can sink. */
+static struct {
+    int x, y;
+    bool down;
+} s_touch;
+
+void frostline_view_set_pointer(int x, int y, bool down)
+{
+    s_touch.x = x;
+    s_touch.y = y;
+    s_touch.down = down;
+}
+
+static bool touch_inside(int x, int y, int w, int h)
+{
+    return s_touch.down && s_touch.x >= x && s_touch.x < x + w
+           && s_touch.y >= y && s_touch.y < y + h;
+}
+
+/* The corners step in one pixel per row, like a chiselled tablet. */
+void fill_plate(int x, int y, int w, int h, int cut, Color color)
+{
+    DrawRectangle(x, y + cut, w, h - 2 * cut, color);
+    for (int i = 0; i < cut; ++i) {
+        int inset = cut - i;
+        DrawRectangle(x + inset, y + i, w - 2 * inset, 1, color);
+        DrawRectangle(x + inset, y + h - 1 - i, w - 2 * inset, 1, color);
+    }
+}
+
+void outline_plate(int x, int y, int w, int h, int cut, Color color)
+{
+    DrawRectangle(x + cut, y, w - 2 * cut, 1, color);
+    DrawRectangle(x + cut, y + h - 1, w - 2 * cut, 1, color);
+    DrawRectangle(x, y + cut, 1, h - 2 * cut, color);
+    DrawRectangle(x + w - 1, y + cut, 1, h - 2 * cut, color);
+    for (int i = 1; i < cut; ++i) {
+        DrawPixel(x + cut - i, y + i, color);
+        DrawPixel(x + w - 1 - cut + i, y + i, color);
+        DrawPixel(x + cut - i, y + h - 1 - i, color);
+        DrawPixel(x + w - 1 - cut + i, y + h - 1 - i, color);
+    }
+}
+
+void draw_frame_panel(int x, int y, int w, int h)
+{
+    fill_plate(x, y, w, h, 10, FL_INK);
+    outline_plate(x, y, w, h, 10, FL_PAPER);
+    outline_plate(x + 4, y + 4, w - 8, h - 8, 8, FL_PAPER);
+    /* A rivet in each cut corner, between the two lines. */
+    DrawRectangle(x + 6, y + 6, 2, 2, FL_PAPER);
+    DrawRectangle(x + w - 8, y + 6, 2, 2, FL_PAPER);
+    DrawRectangle(x + 6, y + h - 8, 2, 2, FL_PAPER);
+    DrawRectangle(x + w - 8, y + h - 8, 2, 2, FL_PAPER);
+}
+
+/* A small lozenge, the stud either side of a wide plate's label. */
+static void draw_stud(int cx, int cy, Color color)
+{
+    DrawRectangle(cx - 1, cy - 2, 3, 5, color);
+    DrawRectangle(cx - 2, cy - 1, 5, 3, color);
+}
+
+bool draw_plate(int x, int y, int w, int h, plate_style_t style, int *face_y,
+                int *face_h)
+{
+    /* The plate keeps to its rectangle: the stone's thickness takes the
+     * bottom rows, and a pressed plate sinks into them. */
+    const int depth = h >= 36 ? PLATE_DEPTH : PLATE_DEPTH - 1;
+    const int cut = h >= 36 ? PLATE_CUT : PLATE_CUT - 1;
+    bool pressed = style != PLATE_OFF && touch_inside(x, y, w, h);
+    int top = pressed ? y + depth : y;
+    int fh = h - depth;
+    if (style == PLATE_OFF) {
+        /* Not on offer: only the engraved outline, no stone to press. */
+        outline_plate(x, top, w, fh, cut, FL_PAPER);
+    } else if (style == PLATE_DARK) {
+        /* An ink plate on the ink bar: a paper rim and a paper lip. */
+        if (!pressed) {
+            fill_plate(x, y + depth, w, fh, cut, FL_PAPER);
+        }
+        fill_plate(x, top, w, fh, cut, FL_PAPER);
+        fill_plate(x + 1, top + 1, w - 2, fh - 2, cut - 1, FL_INK);
+    } else {
+        if (!pressed) {
+            fill_plate(x, y + depth, w, fh, cut, FL_PAPER);
+        }
+        fill_plate(x, top, w, fh, cut, FL_PAPER);
+        outline_plate(x + 1, top + 1, w - 2, fh - 2, cut - 1, FL_INK);
+        if (style == PLATE_GRAND) {
+            outline_plate(x + 4, top + 4, w - 8, fh - 8, cut - 2, FL_INK);
+        }
+    }
+    if (face_y) {
+        *face_y = top;
+    }
+    if (face_h) {
+        *face_h = fh;
+    }
+    return pressed;
+}
+
 /* A right-pointing play triangle of half-height r, centred on (cx, cy). */
 static void draw_play_icon(int cx, int cy, int r, Color color)
 {
@@ -382,7 +476,7 @@ const fl_level_t *current_level(const fl_state_t *model)
 static void draw_background(const fl_state_t *model)
 {
     uint8_t level = model->level < FL_LEVEL_COUNT ? model->level : 0;
-    draw_full(fv_assets.terrain, fv_assets.maps[level], 0.0f, 0.0f, 480.0f);
+    fl_terrain_draw_level(level);
 }
 
 bool corner_cut(int x, int y)
@@ -664,134 +758,6 @@ static void draw_ring(const fl_state_t *model)
     }
 }
 
-static int tower_variant(const fl_tower_t *tower)
-{
-    int variant = (int)tower->level - 1;
-    if (tower->level >= 3) {
-        int option = fl_tower_option(tower, 1);
-        variant = 2 + (option < 0 ? 0 : option);
-    }
-    return (variant < 0 || variant > 3) ? 0 : variant;
-}
-
-/* Selection: four corner brackets round the sprite, ink with a paper core so
- * they read on snow and on forest alike. */
-static void draw_brackets(int x, int y, int w, int h)
-{
-    const int arm = 6;
-    for (int corner = 0; corner < 4; ++corner) {
-        bool right = corner & 1;
-        bool bottom = corner & 2;
-        int cx = right ? x + w - 1 : x;
-        int cy = bottom ? y + h - 1 : y;
-        int hx = right ? cx - arm + 1 : cx;
-        int vy = bottom ? cy - arm + 1 : cy;
-        DrawRectangle(hx - 1, cy - 1, arm + 2, 3, FL_INK);
-        DrawRectangle(cx - 1, vy - 1, 3, arm + 2, FL_INK);
-        DrawRectangle(hx, cy, arm, 1, FL_PAPER);
-        DrawRectangle(cx, vy, 1, arm, FL_PAPER);
-    }
-}
-
-/* One prism of ice: a paper wedge in an ink case, with a facet line down
- * its lit side. */
-static void draw_ice_spike(int x, int base, int h, int w)
-{
-    if (h < 2) {
-        return;
-    }
-    DrawTriangle((Vector2){(float)x, (float)(base - h - 1)},
-                 (Vector2){(float)(x - w - 1), (float)(base + 1)},
-                 (Vector2){(float)(x + w + 1), (float)(base + 1)}, FL_INK);
-    DrawTriangle((Vector2){(float)x, (float)(base - h)},
-                 (Vector2){(float)(x - w), (float)base},
-                 (Vector2){(float)(x + w), (float)base}, FL_PAPER);
-    DrawLine(x, base - h + 2, x + w / 2, base, FL_INK);
-}
-
-/* A tower the frost king has frozen: a crust of prisms round its plinth
- * and rime glittering up its body. The prisms sink back as it thaws. */
-static void draw_frozen(const fl_tower_t *tower, uint32_t tick)
-{
-    static const int8_t SPIKES[][3] = {   /* dx, height, half width */
-        {-15, 10, 3}, {-9, 18, 4}, {-2, 12, 3}, {5, 21, 4}, {12, 13, 3},
-        {17, 8, 2},
-    };
-    float thaw = (float)tower->frozen_ticks / 24.0f;
-    if (thaw > 1.0f) {
-        thaw = 1.0f;
-    }
-    int base = tower->y + 4;
-    /* Rime: paper flecks scattered over the body, a few winking. */
-    for (int k = 0; k < 14; ++k) {
-        uint32_t h = jag_hash((uint32_t)tower->x * 131u + (uint32_t)k * 977u);
-        int fx = tower->x - 12 + (int)(h % 25u);
-        int fy = tower->y - 6 - (int)((h >> 8) % 34u);
-        if (((h >> 16) + tick / 4u) % 7u == 0u) {
-            DrawRectangle(fx - 1, fy, 3, 1, FL_PAPER);
-            DrawRectangle(fx, fy - 1, 1, 3, FL_PAPER);
-        } else {
-            DrawRectangle(fx, fy, 1, 1, FL_PAPER);
-        }
-    }
-    for (size_t k = 0; k < sizeof(SPIKES) / sizeof(SPIKES[0]); ++k) {
-        draw_ice_spike(tower->x + SPIKES[k][0], base,
-                       (int)((float)SPIKES[k][1] * thaw), SPIKES[k][2]);
-    }
-}
-
-static void draw_tower(const fl_state_t *model, int i)
-{
-    const fl_tower_t *tower = &model->towers[i];
-    int kind = (int)tower->kind;
-    if (kind <= FL_TOWER_NONE || kind >= FL_TOWER_KIND_COUNT) {
-        return;
-    }
-    float x = (float)tower->x - TOWER_DRAW_SIZE / 2.0f;
-    float y = (float)tower->y - TOWER_DRAW_SIZE + SPRITE_FOOT;
-    /* The heavy throwers kick down a pixel as they let fly. */
-    bool kicks = kind == FL_TOWER_SIEGE || kind == FL_TOWER_EMBER;
-    float recoil = (kicks && tower->shot_tick < 3) ? 1.0f : 0.0f;
-    draw_padded(fv_assets.units, fv_assets.towers[kind][tower_variant(tower)], x,
-                y + recoil, TOWER_DRAW_SIZE);
-
-    /* The spire's tip and the obelisk's eye flare as they fire. */
-    if ((kind == FL_TOWER_STORM || kind == FL_TOWER_RUNE)
-            && tower->shot_tick < 6) {
-        int mx = tower->x;
-        int my = tower->y - (int)fl_muzzle_height((fl_tower_kind_t)kind);
-        int flare = 6 - (int)tower->shot_tick;
-        DrawCircle(mx, my, (float)(flare / 2 + 2), FL_INK);
-        DrawCircle(mx, my, (float)(flare / 2 + 1), FL_PAPER);
-        if (kind == FL_TOWER_STORM) {
-            /* Four short rays, turned a little every flare. */
-            for (int r = 0; r < 4; ++r) {
-                float a = (float)r * 1.5707963f + (float)tower->shot_tick * 0.4f;
-                int ex = mx + (int)lroundf(cosf(a) * (float)(flare + 3));
-                int ey = my + (int)lroundf(sinf(a) * (float)(flare + 3));
-                DrawLine(mx, my, ex, ey, FL_PAPER);
-            }
-        }
-    }
-
-    /* Level pips on the plinth: filled for every level reached. */
-    for (int level = 0; level < 3; ++level) {
-        int px = tower->x - 10 + level * 7;
-        bool filled = level < tower->level;
-        DrawRectangle(px, tower->y + 3, 6, 4, FL_INK);
-        if (!filled) {
-            DrawRectangle(px + 1, tower->y + 4, 4, 2, FL_PAPER);
-        }
-    }
-    if (tower->frozen_ticks > 0) {
-        draw_frozen(tower, model->tick);
-    }
-    if (model->selected_tower == (int8_t)i) {
-        draw_brackets((int)x + 4, (int)y, (int)TOWER_DRAW_SIZE - 8,
-                      (int)TOWER_DRAW_SIZE);
-    }
-}
-
 static void draw_hero(const fl_state_t *model, int i)
 {
     const fl_hero_t *hero = &model->heroes[i];
@@ -832,6 +798,18 @@ static void draw_ward(int cx, int cy, int radius, uint16_t ticks, uint32_t tick)
     }
     draw_dotted_circle(cx, cy, radius, (int)(tick * 6u));
     draw_dotted_circle(cx, cy, radius - 3, -(int)(tick * 4u));
+}
+
+/* A champion's crown: three paper points on an ink band, sat on its bar. */
+static void draw_crown(int cx, int bottom)
+{
+    DrawRectangle(cx - 6, bottom - 3, 13, 4, FL_INK);
+    DrawRectangle(cx - 5, bottom - 2, 11, 2, FL_PAPER);
+    for (int k = -1; k <= 1; ++k) {
+        int px = cx + k * 5;
+        DrawRectangle(px - 1, bottom - 8, 3, 6, FL_INK);
+        DrawRectangle(px, bottom - 7, 1, 5, FL_PAPER);
+    }
 }
 
 static void draw_enemy(const fl_state_t *model, int i)
@@ -885,7 +863,7 @@ static void draw_enemy(const fl_state_t *model, int i)
     /* Health bar over the head, only once the enemy is hurt, so a fresh
      * column reads as creatures rather than a row of bars. A boss always
      * shows its bar, a wide one. */
-    bool boss = look->sheet == SHEET_TITAN;
+    bool boss = look->sheet == SHEET_TITAN || enemy->champion;
     float ratio = enemy->max_hp > 0.0f ? enemy->hp / enemy->max_hp : 0.0f;
     if (!boss && ratio >= 1.0f && enemy->slow_ticks == 0) {
         return;
@@ -895,6 +873,9 @@ static void draw_enemy(const fl_state_t *model, int i)
     int bar_y = fl_enemy_flies(enemy) ? (int)y + 8 : (int)y - 4;
     DrawRectangle(bar_x - 1, bar_y - 1, bar_w + 2, 4, FL_INK);
     DrawRectangle(bar_x, bar_y, (int)(ratio * (float)bar_w), 2, FL_PAPER);
+    if (enemy->champion) {
+        draw_crown(ex, bar_y - 2);
+    }
     if (kind == FL_ENEMY_KING) {
         /* Notches at the thirds, where the king wards himself. */
         for (int third = 1; third <= 2; ++third) {
@@ -989,7 +970,7 @@ static void draw_actors(const fl_state_t *model)
     for (int i = 0; i < count; ++i) {
         switch (actors[i].type) {
         case ACTOR_TOWER:
-            draw_tower(model, actors[i].index);
+            towers_draw(model, actors[i].index);
             break;
         case ACTOR_HERO:
             draw_hero(model, actors[i].index);
@@ -1311,18 +1292,20 @@ static void draw_hud(const fl_state_t *model)
             hero_placed = true;
         }
     }
-    draw_panel(FL_SKILL_BTN_X, FL_SKILL_BTN_Y, FL_SKILL_BTN_W, FL_SKILL_BTN_H,
-               ready);
+    int face_y, face_h;
+    draw_plate(FL_SKILL_BTN_X, FL_SKILL_BTN_Y, FL_SKILL_BTN_W, FL_SKILL_BTN_H,
+               ready ? PLATE_PLAIN : PLATE_DARK, &face_y, &face_h);
     if (ready) {
         draw_padded(fv_assets.icons, fv_assets.icon_nova,
-                    (float)(FL_SKILL_BTN_X + 1), (float)FL_SKILL_BTN_Y,
+                    (float)(FL_SKILL_BTN_X + 1),
+                    (float)(face_y + face_h / 2 - ICON_DRAW_SIZE / 2),
                     (float)ICON_DRAW_SIZE);
     } else if (hero_placed) {
-        DrawText("...", FL_SKILL_BTN_X + 10, FL_SKILL_BTN_Y + 10, 14, FL_PAPER);
+        DrawText("...", FL_SKILL_BTN_X + 10, face_y + 8, 14, FL_PAPER);
     } else {
         /* No hero yet: a thin snowflake marks the nova's slot, not a hole. */
         const int cx = FL_SKILL_BTN_X + FL_SKILL_BTN_W / 2;
-        const int cy = FL_SKILL_BTN_Y + FL_SKILL_BTN_H / 2;
+        const int cy = face_y + face_h / 2;
         DrawLine(cx, cy - 8, cx, cy + 8, FL_PAPER);
         DrawLine(cx - 7, cy - 4, cx + 7, cy + 4, FL_PAPER);
         DrawLine(cx - 7, cy + 4, cx + 7, cy - 4, FL_PAPER);
@@ -1351,17 +1334,21 @@ static void draw_hud(const fl_state_t *model)
 
     /* The pause button shows what a tap does: two bars while the battle
      * runs, a lit play triangle while it waits. */
-    draw_panel(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H, model->paused);
+    draw_plate(FL_PAUSE_BTN_X, FL_BTN_Y, FL_PAUSE_BTN_W, FL_BTN_H,
+               model->paused ? PLATE_PLAIN : PLATE_DARK, &face_y, &face_h);
+    const int pause_mid = face_y + face_h / 2;
     if (model->paused) {
-        draw_play_icon(FL_PAUSE_BTN_X + FL_PAUSE_BTN_W / 2 + 1,
-                       FL_BTN_Y + FL_BTN_H / 2, 8, FL_INK);
+        draw_play_icon(FL_PAUSE_BTN_X + FL_PAUSE_BTN_W / 2 + 1, pause_mid, 7,
+                       FL_INK);
     } else {
-        DrawRectangle(FL_PAUSE_BTN_X + 12, FL_BTN_Y + 7, 5, 14, FL_PAPER);
-        DrawRectangle(FL_PAUSE_BTN_X + 20, FL_BTN_Y + 7, 5, 14, FL_PAPER);
+        DrawRectangle(FL_PAUSE_BTN_X + 12, pause_mid - 6, 5, 12, FL_PAPER);
+        DrawRectangle(FL_PAUSE_BTN_X + 20, pause_mid - 6, 5, 12, FL_PAPER);
     }
-    draw_panel(FL_SPEED_BTN_X, FL_BTN_Y, FL_SPEED_BTN_W, FL_BTN_H, false);
+    draw_plate(FL_SPEED_BTN_X, FL_BTN_Y, FL_SPEED_BTN_W, FL_BTN_H, PLATE_DARK,
+               &face_y, &face_h);
     draw_text_centered_engine(TextFormat("%ux", (unsigned)model->speed),
-                       FL_SPEED_BTN_X + FL_SPEED_BTN_W / 2, FL_BTN_Y + 7, 16, FL_PAPER);
+                              FL_SPEED_BTN_X + FL_SPEED_BTN_W / 2,
+                              face_y + face_h / 2 - 7, 16, FL_PAPER);
 }
 
 /* The panel that opens when a tower is picked: its numbers, the two upgrades
@@ -1433,18 +1420,18 @@ static void draw_upgrade_panel(const fl_state_t *model)
     for (int i = 0; i < FL_TOWER_OPTION_COUNT; ++i) {
         int card_x = FL_UPGRADE_CARD_X0
                      + i * (FL_UPGRADE_CARD_W + FL_UPGRADE_CARD_GAP);
-        draw_panel(card_x, FL_UPGRADE_CARD_Y, FL_UPGRADE_CARD_W,
-                   FL_UPGRADE_CARD_H, true);
+        int face_y, face_h;
+        draw_plate(card_x, FL_UPGRADE_CARD_Y, FL_UPGRADE_CARD_W,
+                   FL_UPGRADE_CARD_H, PLATE_PLAIN, &face_y, &face_h);
         fl_text_draw(upgrade_name(tower->kind, stage, i), card_x + 8,
-                     FL_UPGRADE_CARD_Y + 4, FL_FONT_LARGE, FL_INK);
+                     face_y + 3, FL_FONT_LARGE, FL_INK);
         fl_text_draw(fl_fmt("LV%u", (unsigned)tower->level + 1), card_x + 8,
-                     FL_UPGRADE_CARD_Y + FL_UPGRADE_CARD_H - 4
-                     - fl_text_height(FL_FONT_SMALL),
+                     face_y + face_h - 3 - fl_text_height(FL_FONT_SMALL),
                      FL_FONT_SMALL, FL_INK);
         const char *price = TextFormat("%u", (unsigned)cost);
         int price_w = MeasureText(price, BUTTON_TEXT);
-        int price_x = card_x + FL_UPGRADE_CARD_W - 8 - price_w;
-        int price_y = FL_UPGRADE_CARD_Y + 21;
+        int price_x = card_x + FL_UPGRADE_CARD_W - 9 - price_w;
+        int price_y = face_y + 18;
         DrawText(price, price_x, price_y, BUTTON_TEXT, FL_INK);
         if (!affordable) {
             /* Strike the price through so an unaffordable upgrade reads. */
@@ -1457,18 +1444,40 @@ static void draw_upgrade_panel(const fl_state_t *model)
 void draw_button(int x, int y, int w, int h, const char *label,
                  bool enabled, bool beckon, uint32_t tick)
 {
-    int text_y = y + (h - fl_text_height(FL_FONT_LARGE)) / 2;
+    draw_icon_button(x, y, w, h, label, false, enabled, beckon, tick);
+}
+
+void draw_icon_button(int x, int y, int w, int h, const char *label,
+                      bool play_icon, bool enabled, bool beckon, uint32_t tick)
+{
+    /* Wide plates carry the inner line and the studs; a narrow one has no
+     * room for them beside its label. */
+    const int icon_r = 6;
+    const int icon_w = play_icon ? icon_r * 2 + 6 : 0;
+    const int label_w = fl_text_width(label, FL_FONT_LARGE) + icon_w;
+    const bool grand = w >= 80;
+    plate_style_t style = !enabled ? PLATE_OFF : grand ? PLATE_GRAND : PLATE_PLAIN;
+    int face_y, face_h;
+    draw_plate(x, y, w, h, style, &face_y, &face_h);
+    int text_y = face_y + (face_h - fl_text_height(FL_FONT_LARGE)) / 2;
     if (!enabled) {
-        DrawRectangleLines(x, y, w, h, FL_PAPER);
         fl_text_draw_centered(label, x + w / 2, text_y, FL_FONT_LARGE, FL_PAPER);
         return;
     }
-    draw_panel(x, y, w, h, true);
     if (beckon && (tick / 15u) % 2u == 0u) {
         /* The button the player most likely wants breathes a second frame. */
-        DrawRectangleLines(x - 3, y - 3, w + 6, h + 6, FL_PAPER);
+        outline_plate(x - 3, y - 3, w + 6, h + 6, PLATE_CUT + 2, FL_PAPER);
     }
-    fl_text_draw_centered(label, x + w / 2, text_y, FL_FONT_LARGE, FL_INK);
+    if (grand && label_w + 48 <= w) {
+        draw_stud(x + 11, face_y + face_h / 2, FL_INK);
+        draw_stud(x + w - 12, face_y + face_h / 2, FL_INK);
+    }
+    /* The icon leads the label; the pair is centred as one. */
+    const int left = x + (w - label_w) / 2;
+    if (play_icon) {
+        draw_play_icon(left + icon_r, face_y + face_h / 2, icon_r, FL_INK);
+    }
+    fl_text_draw(label, left + icon_w, text_y, FL_FONT_LARGE, FL_INK);
 }
 
 static void draw_panel_buttons(const char *const labels[FL_PANEL_BTN_COUNT],
@@ -1505,9 +1514,7 @@ static void draw_overlay(const fl_state_t *model)
     }
     /* An inset panel, so the verdict sits inside the glass instead of
      * running into the four cut corners. */
-    DrawRectangle(64, 88, 352, 304, FL_INK);
-    DrawRectangleLines(64, 88, 352, 304, FL_PAPER);
-    DrawRectangleLines(68, 92, 344, 296, FL_PAPER);
+    draw_frame_panel(64, 88, 352, 304);
     bool won = model->phase == FL_PHASE_WON;
     const char *title = fl_tr(won ? FL_TXT_UI_WON_TITLE : FL_TXT_UI_LOST_TITLE);
     fl_text_draw_centered(title, FL_VIEW_WIDTH / 2, 100, FL_FONT_HUGE, FL_PAPER);
@@ -1574,9 +1581,7 @@ static void draw_pause(const fl_state_t *model)
             || model->phase == FL_PHASE_LOST) {
         return;
     }
-    DrawRectangle(64, 200, 352, 192, FL_INK);
-    DrawRectangleLines(64, 200, 352, 192, FL_PAPER);
-    DrawRectangleLines(68, 204, 344, 184, FL_PAPER);
+    draw_frame_panel(64, 200, 352, 192);
     fl_text_draw_centered(fl_tr(FL_TXT_UI_PAUSED), FL_VIEW_WIDTH / 2, 218,
                           FL_FONT_HUGE, FL_PAPER);
     fl_text_draw_centered(level_name(model->level), FL_VIEW_WIDTH / 2, 258,
@@ -1588,21 +1593,14 @@ static void draw_pause(const fl_state_t *model)
         fl_tr(FL_TXT_UI_BTN_MAP), fl_tr(FL_TXT_UI_BTN_RETRY),
         fl_tr(FL_TXT_UI_BTN_RESUME),
     };
-    const bool enabled[FL_PANEL_BTN_COUNT] = {true, true, true};
-    draw_panel_buttons(labels, enabled, FL_PANEL_BTN_NEXT, model->tick);
-
     /* Resume is the likely tap: the same play triangle as the HUD button
-     * sits before its label, so the two read as one action. */
-    int x, y, w, h;
-    fl_panel_button_rect(FL_PANEL_BTN_NEXT, &x, &y, &w, &h);
-    const char *resume = labels[FL_PANEL_BTN_NEXT];
-    const int label_w = fl_text_width(resume, FL_FONT_LARGE);
-    const int icon_r = 6;
-    const int left = x + (w - label_w - icon_r * 2 - 6) / 2;
-    DrawRectangle(x + 2, y + 2, w - 4, h - 4, FL_PAPER);
-    draw_play_icon(left + icon_r, y + h / 2, icon_r, FL_INK);
-    fl_text_draw(resume, left + icon_r * 2 + 6,
-                 y + (h - fl_text_height(FL_FONT_LARGE)) / 2, FL_FONT_LARGE, FL_INK);
+     * leads its label, so the two read as one action. */
+    for (int i = 0; i < FL_PANEL_BTN_COUNT; ++i) {
+        int x, y, w, h;
+        fl_panel_button_rect(i, &x, &y, &w, &h);
+        draw_icon_button(x, y, w, h, labels[i], i == FL_PANEL_BTN_NEXT, true,
+                         i == FL_PANEL_BTN_NEXT, model->tick);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1621,8 +1619,8 @@ static void draw_trail_dot(int x, int y, bool bold)
 /* The trail from one stage to the next bows sideways like a footpath.
  * Walked stretches are dotted densely; the way ahead is sparse, and the
  * stretch to the newest open stage marches towards it. */
-static void draw_trail(fl_point_t a, fl_point_t b, int spacing, int march,
-                       bool bold)
+static void draw_trail(fl_point_t a, fl_point_t b, int clear_a, int clear_b,
+                       int spacing, int march, bool bold)
 {
     float mx = (float)(a.x + b.x) * 0.5f;
     float my = (float)(a.y + b.y) * 0.5f;
@@ -1654,34 +1652,70 @@ static void draw_trail(fl_point_t a, fl_point_t b, int spacing, int march,
             continue;
         }
         last_bucket = bucket;
-        if (da >= 20.0f * 20.0f && db >= 20.0f * 20.0f) {
+        if (da >= (float)(clear_a * clear_a) && db >= (float)(clear_b * clear_b)) {
             draw_trail_dot((int)x, (int)y, bold);
         }
     }
 }
 
-static void draw_node(const fl_state_t *model, uint8_t i)
+/* How far the trail keeps off a node: a medallion is wider than a marker. */
+static int node_clearance(uint8_t i)
+{
+    return FL_LEVELS[i].interlude ? 13 : 20;
+}
+
+/* A level on the screen, its node moved by the scroll. */
+static fl_point_t node_on_screen(const fl_state_t *model, uint8_t i)
 {
     fl_point_t node = FL_LEVELS[i].node;
+    node.x = (int16_t)(node.x - model->menu_scroll);
+    return node;
+}
+
+/* An interlude's marker: a waystone on the road, not a landmark. Open, it
+ * is an ink stone with a paper heart; locked, a hollow ring of dots. */
+static void draw_waystone(fl_point_t node, int bob, bool open)
+{
+    DrawCircle(node.x, node.y + bob, 10, FL_PAPER);
+    DrawCircleLines(node.x, node.y + bob, 11, FL_INK);
+    if (open) {
+        DrawCircle(node.x, node.y + bob, 7, FL_INK);
+        DrawCircle(node.x, node.y + bob, 3, FL_PAPER);
+        DrawRectangle(node.x - 1, node.y + bob - 1, 2, 2, FL_INK);
+    } else {
+        draw_dotted_circle(node.x, node.y + bob, 6, 0);
+    }
+}
+
+static void draw_node(const fl_state_t *model, uint8_t i)
+{
+    fl_point_t node = node_on_screen(model, i);
+    bool interlude = FL_LEVELS[i].interlude;
     bool open = fl_level_unlocked(model, i);
     bool picked = model->menu_level == i;
+    int radius = interlude ? 10 : 17;
     /* The picked token bobs gently and has a ring pulsing out under it. */
     int bob = 0;
     if (picked) {
         bob = ((model->tick / 8u) % 4u == 0u) ? -1 : 0;
         int pulse = (int)((model->tick / 2u) % 16u);
-        DrawCircleLines(node.x, node.y + 2, 16 + pulse / 2, FL_PAPER);
-        DrawCircleLines(node.x, node.y + 2, 15 + pulse / 2, FL_INK);
+        DrawCircleLines(node.x, node.y + 2, radius - 1 + pulse / 2, FL_PAPER);
+        DrawCircleLines(node.x, node.y + 2, radius - 2 + pulse / 2, FL_INK);
     }
-    /* A paper plate under the token lifts it off busy ground. */
-    DrawCircle(node.x, node.y + bob, 17, FL_PAPER);
-    DrawCircleLines(node.x, node.y + bob, 18, FL_INK);
-    draw_padded(fv_assets.props, open ? fv_assets.nodes[i] : fv_assets.node_locked,
-                (float)(node.x - 20), (float)(node.y - 18 + bob), PAD_DRAW_SIZE);
+    if (interlude) {
+        draw_waystone(node, bob, open);
+    } else {
+        /* A paper plate under the token lifts it off busy ground. */
+        DrawCircle(node.x, node.y + bob, 17, FL_PAPER);
+        DrawCircleLines(node.x, node.y + bob, 18, FL_INK);
+        draw_padded(fv_assets.props,
+                    open ? fv_assets.nodes[FL_LEVELS[i].stage] : fv_assets.node_locked,
+                    (float)(node.x - 20), (float)(node.y - 18 + bob), PAD_DRAW_SIZE);
+    }
     if (picked) {
         /* A banner planted beside the token, the same cloth as the gate's. */
-        int pole_x = node.x + 14;
-        int pole_top = node.y - 34 + bob;
+        int pole_x = node.x + radius - 3;
+        int pole_top = node.y - radius - 17 + bob;
         DrawRectangle(pole_x - 1, pole_top, 3, 26, FL_PAPER);
         DrawRectangle(pole_x, pole_top + 1, 1, 24, FL_INK);
         int flag = (int)((model->tick / 5u) % CASTLE_FLAG_FRAMES);
@@ -1692,7 +1726,7 @@ static void draw_node(const fl_state_t *model, uint8_t i)
     /* Little pips under a cleared stage: one per star earned. */
     for (int s = 0; s < model->level_stars[i] && s < 3; ++s) {
         int px = node.x - 8 + s * 7;
-        int py = node.y + 15;
+        int py = node.y + radius - 2;
         DrawRectangle(px - 1, py - 1, 5, 5, FL_INK);
         DrawRectangle(px, py, 3, 3, FL_PAPER);
     }
@@ -1704,11 +1738,12 @@ static void draw_menu_card(const fl_state_t *model)
     const fl_level_t *level = &FL_LEVELS[i];
     int x = FL_MENU_CARD_X;
     int y = FL_MENU_CARD_Y;
-    DrawRectangle(x, y, FL_MENU_CARD_W, FL_MENU_CARD_H, FL_INK);
-    DrawRectangleLines(x, y, FL_MENU_CARD_W, FL_MENU_CARD_H, FL_PAPER);
-    DrawRectangle(x, y + 2, FL_MENU_CARD_W, 1, FL_PAPER);
+    fill_plate(x, y, FL_MENU_CARD_W, FL_MENU_CARD_H, 8, FL_INK);
+    outline_plate(x, y, FL_MENU_CARD_W, FL_MENU_CARD_H, 8, FL_PAPER);
+    outline_plate(x + 3, y + 3, FL_MENU_CARD_W - 6, FL_MENU_CARD_H - 6, 6,
+                  FL_PAPER);
 
-    draw_padded(fv_assets.props, fv_assets.nodes[i], (float)(x + 6),
+    draw_padded(fv_assets.props, fv_assets.nodes[level->stage], (float)(x + 6),
                 (float)(y + 10), PAD_DRAW_SIZE);
     /* Three lines: the stage number, its name, and its record or news. */
     bool zh = fl_text_language() == FL_LANG_ZH;
@@ -1747,9 +1782,32 @@ static void draw_menu_card(const fl_state_t *model)
                 fl_tr(FL_TXT_UI_BTN_FIGHT), true, true, model->tick);
 }
 
+/* An arrow at the screen's edge where more of the map lies, nudging out and
+ * back so it reads as "drag this way". */
+static void draw_scroll_hint(int x, int dir, uint32_t tick)
+{
+    int y = 214;
+    int nudge = ((tick / 10u) % 4u == 0u) ? dir : 0;
+    x += nudge;
+    fill_plate(x - 9, y - 16, 18, 32, 3, FL_PAPER);
+    outline_plate(x - 9, y - 16, 18, 32, 3, FL_INK);
+    /* A chevron of stacked bars, its point towards dir. */
+    for (int row = -6; row <= 6; ++row) {
+        int reach = 6 - (row < 0 ? -row : row);
+        int tip = x + dir * (reach - 3);
+        DrawRectangle(dir > 0 ? tip - 2 : tip, y + row, 3, 1, FL_INK);
+    }
+}
+
+static bool node_visible(const fl_state_t *model, uint8_t i, int margin)
+{
+    int x = FL_LEVELS[i].node.x - model->menu_scroll;
+    return x > -margin && x < FL_VIEW_WIDTH + margin;
+}
+
 static void draw_menu(const fl_state_t *model)
 {
-    draw_full(fv_assets.terrain, fv_assets.campaign_map, 0.0f, 0.0f, 480.0f);
+    fl_terrain_draw_campaign(model->menu_scroll);
 
     /* Snow drifts across the map the way it does over a battlefield. */
     for (int i = 0; i < 18; ++i) {
@@ -1765,14 +1823,26 @@ static void draw_menu(const fl_state_t *model)
 
     uint8_t count = fl_level_count();
     for (uint8_t i = 0; i + 1 < count; ++i) {
+        if (!node_visible(model, i, 120) && !node_visible(model, i + 1, 120)) {
+            continue;
+        }
         bool walked = model->level_stars[i] > 0;
         bool frontier = walked && !(model->level_stars[i + 1] > 0);
         int march = frontier ? (int)(model->tick / 3u) : 0;
-        draw_trail(FL_LEVELS[i].node, FL_LEVELS[i + 1].node,
+        draw_trail(node_on_screen(model, i), node_on_screen(model, i + 1),
+                   node_clearance(i), node_clearance((uint8_t)(i + 1)),
                    walked ? 7 : 10, march, walked);
     }
     for (uint8_t i = 0; i < count; ++i) {
-        draw_node(model, i);
+        if (node_visible(model, i, 40)) {
+            draw_node(model, i);
+        }
+    }
+    if (model->menu_scroll > 0) {
+        draw_scroll_hint(14, -1, model->tick);
+    }
+    if (model->menu_scroll < FL_CAMPAIGN_WIDTH - FL_VIEW_WIDTH) {
+        draw_scroll_hint(FL_VIEW_WIDTH - 14, 1, model->tick);
     }
     draw_menu_card(model);
     draw_button(FL_MENU_BACK_X, FL_MENU_BACK_Y, FL_MENU_BACK_W, FL_MENU_BACK_H,

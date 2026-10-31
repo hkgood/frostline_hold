@@ -166,6 +166,9 @@ def wave_score_bonus(wave):
 # (kind, count, interval_ticks, lane)
 LANE_A = 0
 LANE_B = 1
+# Or'ed into the lane: the batch's enemy is a champion, the mini-boss of a
+# chapter's opening level (FL_LANE_CHAMPION).
+CHAMPION = 0x80
 
 WAVES = [
     # 1-2: wolves only, a gentle teaching ramp.
@@ -229,7 +232,8 @@ WAVES = [
                  (ENEMY_RAIDER, 12, 16, LANE_B), (ENEMY_WOLF, 16, 10, LANE_B)]},
     # 16: the titan itself, at the head of the last push.
     {"reward": 300, "hp_mult": 645, "armor_add": 14,
-     "batches": [(ENEMY_TITAN, 1, 60, LANE_A), (ENEMY_RAIDER, 10, 14, LANE_A),
+     "batches": [(ENEMY_BANNERMAN, 1, 60, LANE_A | CHAMPION),
+                 (ENEMY_RAIDER, 10, 14, LANE_A),
                  (ENEMY_RAIDER, 10, 14, LANE_B)]},
 ]
 

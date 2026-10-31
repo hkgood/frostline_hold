@@ -1,7 +1,7 @@
 {
   "image": "units_atlas_source.png",
   "columns": 8,
-  "rows": 4,
+  "rows": 10,
   "output_cell": 60,
   "output_columns": 8,
   "alpha_mode": "binary",
@@ -29,18 +29,6 @@
     },
     {
       "name": "tower_frost_lv3b"
-    },
-    {
-      "name": "tower_siege_lv1"
-    },
-    {
-      "name": "tower_siege_lv2"
-    },
-    {
-      "name": "tower_siege_lv3a"
-    },
-    {
-      "name": "tower_siege_lv3b"
     },
     {
       "name": "tower_storm_lv1"
@@ -79,16 +67,184 @@
       "name": "tower_barracks_lv3b"
     },
     {
-      "name": "tower_ember_lv1"
+      "name": "tower_siege_lv1_cocked_r"
     },
     {
-      "name": "tower_ember_lv2"
+      "name": "tower_siege_lv1_cocked_l"
     },
     {
-      "name": "tower_ember_lv3a"
+      "name": "tower_siege_lv1_swing_r"
     },
     {
-      "name": "tower_ember_lv3b"
+      "name": "tower_siege_lv1_swing_l"
+    },
+    {
+      "name": "tower_siege_lv1_stop_r"
+    },
+    {
+      "name": "tower_siege_lv1_stop_l"
+    },
+    {
+      "name": "tower_siege_lv1_bounce_r"
+    },
+    {
+      "name": "tower_siege_lv1_bounce_l"
+    },
+    {
+      "name": "tower_siege_lv1_wind_r"
+    },
+    {
+      "name": "tower_siege_lv1_wind_l"
+    },
+    {
+      "name": "tower_siege_lv2_cocked_r"
+    },
+    {
+      "name": "tower_siege_lv2_cocked_l"
+    },
+    {
+      "name": "tower_siege_lv2_swing_r"
+    },
+    {
+      "name": "tower_siege_lv2_swing_l"
+    },
+    {
+      "name": "tower_siege_lv2_stop_r"
+    },
+    {
+      "name": "tower_siege_lv2_stop_l"
+    },
+    {
+      "name": "tower_siege_lv2_bounce_r"
+    },
+    {
+      "name": "tower_siege_lv2_bounce_l"
+    },
+    {
+      "name": "tower_siege_lv2_wind_r"
+    },
+    {
+      "name": "tower_siege_lv2_wind_l"
+    },
+    {
+      "name": "tower_siege_lv3a_cocked_r"
+    },
+    {
+      "name": "tower_siege_lv3a_cocked_l"
+    },
+    {
+      "name": "tower_siege_lv3a_swing_r"
+    },
+    {
+      "name": "tower_siege_lv3a_swing_l"
+    },
+    {
+      "name": "tower_siege_lv3a_stop_r"
+    },
+    {
+      "name": "tower_siege_lv3a_stop_l"
+    },
+    {
+      "name": "tower_siege_lv3a_bounce_r"
+    },
+    {
+      "name": "tower_siege_lv3a_bounce_l"
+    },
+    {
+      "name": "tower_siege_lv3a_wind_r"
+    },
+    {
+      "name": "tower_siege_lv3a_wind_l"
+    },
+    {
+      "name": "tower_siege_lv3b_cocked_r"
+    },
+    {
+      "name": "tower_siege_lv3b_cocked_l"
+    },
+    {
+      "name": "tower_siege_lv3b_swing_r"
+    },
+    {
+      "name": "tower_siege_lv3b_swing_l"
+    },
+    {
+      "name": "tower_siege_lv3b_stop_r"
+    },
+    {
+      "name": "tower_siege_lv3b_stop_l"
+    },
+    {
+      "name": "tower_siege_lv3b_bounce_r"
+    },
+    {
+      "name": "tower_siege_lv3b_bounce_l"
+    },
+    {
+      "name": "tower_siege_lv3b_wind_r"
+    },
+    {
+      "name": "tower_siege_lv3b_wind_l"
+    },
+    {
+      "name": "tower_ember_lv1_0"
+    },
+    {
+      "name": "tower_ember_lv1_1"
+    },
+    {
+      "name": "tower_ember_lv1_2"
+    },
+    {
+      "name": "tower_ember_lv1_3"
+    },
+    {
+      "name": "tower_ember_lv1_surge"
+    },
+    {
+      "name": "tower_ember_lv2_0"
+    },
+    {
+      "name": "tower_ember_lv2_1"
+    },
+    {
+      "name": "tower_ember_lv2_2"
+    },
+    {
+      "name": "tower_ember_lv2_3"
+    },
+    {
+      "name": "tower_ember_lv2_surge"
+    },
+    {
+      "name": "tower_ember_lv3a_0"
+    },
+    {
+      "name": "tower_ember_lv3a_1"
+    },
+    {
+      "name": "tower_ember_lv3a_2"
+    },
+    {
+      "name": "tower_ember_lv3a_3"
+    },
+    {
+      "name": "tower_ember_lv3a_surge"
+    },
+    {
+      "name": "tower_ember_lv3b_0"
+    },
+    {
+      "name": "tower_ember_lv3b_1"
+    },
+    {
+      "name": "tower_ember_lv3b_2"
+    },
+    {
+      "name": "tower_ember_lv3b_3"
+    },
+    {
+      "name": "tower_ember_lv3b_surge"
     }
   ],
   "animations": []

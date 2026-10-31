@@ -45,11 +45,28 @@ Levels, text and art are generated; edit the sources, then regenerate:
 cd assets_src
 python artgen/generate_level.py      # components/app_game/data/frostline_level.h
 python artgen/generate_text.py       # components/app_game_runtime/include/frostline_text_data.h
+python artgen/generate_terrain.py    # components/app_game_runtime/data/frostline_terrain_data.h
+python artgen/generate_tower_rig.py  # components/app_game/data/frostline_tower_rig.h
 python prepare_sprites.py            # atlas sources
 python prepare_sfx.py                # sound effects and music
 ```
 
 Each generator has a `--check` mode used by the build and the tests.
+
+Levels live in `artgen/levels.py` (the 8 chapters) and `artgen/interludes.py`
+(the 2 interludes after each chapter); `levels.LEVELS` puts them in play order.
+The battlefields and the campaign scroll (`CAMPAIGN_PLATES`, one 480 px plate
+per third) are baked as 1-bit maps into the firmware, about 30 KB each, and
+the runtime expands only the map on screen into one RGB565 buffer. Rerun
+`generate_terrain.py` after changing a plate, a lane or a node.
+
+Towers are drawn to one rig, `artgen/tower_rig.py`: muzzles, the catapult's
+arm and bucket, the ballista's mount, the kiln's spare pots, orbits and the
+hall's door. `artgen/tower_art.py` draws the frames from it and
+`generate_tower_rig.py` writes the same points for the model, which fires
+from them, and for `frostline_towers.c`, which hangs the moving parts on them.
+`artgen/test_towers.py` checks that every muzzle lands on the art. Rerun the
+generator after moving anything on a tower.
 
 ## Tests
 

@@ -27,6 +27,8 @@ void frostline_view_draw(const fl_state_t *model);
  * for every kind the first time it walks on; the runtime keeps the mask in
  * the record. */
 void frostline_view_set_seen_enemies(uint32_t mask);
+/** Where the finger is, so the button under it is drawn pressed in. */
+void frostline_view_set_pointer(int x, int y, bool down);
 uint32_t frostline_view_seen_enemies(void);
 
 #ifdef __cplusplus

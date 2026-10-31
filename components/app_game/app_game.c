@@ -82,6 +82,7 @@ void app_game_set_settings(app_game_handle_t game, const fl_settings_t *settings
     s.sound = s.sound > FL_VOLUME_MAX ? FL_VOLUME_MAX : s.sound;
     s.haptics = s.haptics ? 1 : 0;
     s.lang = s.lang ? 1 : 0;
+    s.theme = s.theme == FL_THEME_NIGHT ? FL_THEME_NIGHT : FL_THEME_DAY;
     game->model.settings = s;
 }
 

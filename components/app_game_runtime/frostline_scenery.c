@@ -126,6 +126,74 @@ static const scenery_t SCENERY[] = {
         .lamp_count = 4,
         .motes = {196, 196, 90, 74},
     },
+
+    /* --- The interludes: lighter dressing, each from its own plate. --- */
+    {
+        .key = "pines", .snow = 24, .wind = 1, .birds = true,
+        .pines = {{40, 56}, {120, 56}, {200, 56}, {280, 56}, {360, 56},
+                  {440, 56}, {130, 180}, {210, 175}, {300, 175}, {390, 175},
+                  {90, 270}, {100, 330}},
+        .pine_count = 12,
+        .hare = {{40, 440}, {200, 430}},
+    },
+    {
+        /* The river crosses the whole map below the northern woods. */
+        .key = "ford", .snow = 22, .wind = 1, .birds = true,
+        .pines = {{40, 40}, {110, 30}, {330, 40}, {400, 60}, {450, 90},
+                  {30, 260}, {90, 300}, {60, 380}, {150, 400}},
+        .pine_count = 9,
+        .ice = {240, 182, 220, 18},
+        .mist = {0, 160, 480, 40},
+    },
+    {
+        .key = "reeds", .snow = 18, .wind = 1, .birds = true,
+        .ice = {160, 355, 110, 55},
+        .mist = {40, 300, 260, 50},
+        .reeds = {{48, 21}, {180, 21}, {433, 21}, {447, 183}, {27, 281},
+                  {222, 281}, {293, 422}},
+        .reed_count = 7,
+    },
+    {
+        .key = "hamlet", .snow = 24, .wind = 1, .birds = true,
+        .pines = {{87, 60}, {179, 70}, {45, 253}},
+        .pine_count = 3,
+        .smoke = {{115, 70}, {347, 49}, {411, 134}},
+        .smoke_count = 3,
+    },
+    {
+        .key = "crag", .snow = 28, .wind = 2, .eagle = true,
+    },
+    {
+        .key = "haul", .snow = 26, .wind = 2, .birds = true,
+    },
+    {
+        /* Lanterns hang at the miners' huts. */
+        .key = "camp", .snow = 16, .wind = 1,
+        .lamps = {{141, 21}, {120, 183}, {267, 373}, {447, 155}},
+        .lamp_count = 4,
+    },
+    {
+        .key = "moraine", .snow = 30, .wind = 2,
+    },
+    {
+        .key = "crevasse", .snow = 34, .wind = 3,
+    },
+    {
+        .key = "henge", .snow = 22, .wind = 1, .birds = true,
+    },
+    {
+        .key = "gateroad", .snow = 24, .wind = 2, .eagle = true,
+    },
+    {
+        .key = "icicle", .snow = 20, .wind = 1,
+    },
+    {
+        .key = "vale", .snow = 22, .wind = 1, .birds = true,
+        .mist = {20, 280, 300, 60},
+    },
+    {
+        .key = "outer", .snow = 30, .wind = 2,
+    },
 };
 
 #define SCENERY_COUNT (sizeof(SCENERY) / sizeof(SCENERY[0]))

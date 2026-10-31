@@ -6,11 +6,13 @@
  *
  * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "frostline_model.h"
 #include "../data/frostline_level.h"
+#include "../data/frostline_tower_rig.h"
 
 static void test_reset_starts_in_prep(void)
 {
@@ -515,6 +517,12 @@ static void tap(fl_state_t *state, int x, int y)
     fl_set_pointer(state, x, y, false);
 }
 
+/* A node on the campaign map, where the scroll puts it on the screen. */
+static void tap_node(fl_state_t *state, uint8_t level)
+{
+    tap(state, FL_LEVELS[level].node.x - state->menu_scroll, FL_LEVELS[level].node.y);
+}
+
 static void tap_panel(fl_state_t *state, int button)
 {
     int x, y, w, h;
@@ -597,9 +605,9 @@ static void test_the_map_picks_and_starts_a_level(void)
     /* The map points at the newest open level. */
     assert(state.menu_level == 1);
     /* A locked node cannot be picked. */
-    tap(&state, FL_LEVELS[2].node.x, FL_LEVELS[2].node.y);
+    tap_node(&state, 2);
     assert(state.menu_level == 1);
-    tap(&state, FL_LEVELS[0].node.x, FL_LEVELS[0].node.y);
+    tap_node(&state, 0);
     assert(state.menu_level == 0);
     /* Time passes on the map without starting a wave. */
     for (int i = 0; i < 1000; ++i) {
@@ -610,6 +618,136 @@ static void test_the_map_picks_and_starts_a_level(void)
     assert(state.phase == FL_PHASE_PREP);
     assert(state.level == 0);
     assert(fl_events_take(&state) & FL_EVENT_LEVEL_START);
+}
+
+static void test_the_map_drags_and_a_drag_is_not_a_tap(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_state_open_menu(&state);
+    assert(state.menu_scroll == 0);
+    /* The press that opened the map is not a tap on it. */
+    fl_set_pointer(&state, FL_MENU_GO_X + 10, FL_MENU_GO_Y + 10, false);
+    assert(state.phase == FL_PHASE_MENU);
+
+    /* Dragging left moves the scroll right, and never off the map. */
+    int16_t max = FL_CAMPAIGN_WIDTH - FL_VIEW_WIDTH;
+    fl_set_pointer(&state, 400, 200, true);
+    fl_set_pointer(&state, 300, 200, true);
+    assert(state.menu_scroll == (max < 100 ? max : 100));
+    fl_set_pointer(&state, -4000, 200, true);
+    assert(state.menu_scroll == max);
+    /* Released over the FIGHT button after a drag: nothing starts. */
+    fl_set_pointer(&state, FL_MENU_GO_X + 10, FL_MENU_GO_Y + 10, false);
+    assert(state.phase == FL_PHASE_MENU);
+    fl_set_pointer(&state, 100, 200, true);
+    fl_set_pointer(&state, 5000, 200, true);
+    fl_set_pointer(&state, 5000, 200, false);
+    assert(state.menu_scroll == 0);
+
+    /* A small wobble is still a tap. */
+    fl_set_pointer(&state, FL_MENU_GO_X + 10, FL_MENU_GO_Y + 10, true);
+    fl_set_pointer(&state, FL_MENU_GO_X + 14, FL_MENU_GO_Y + 12, true);
+    fl_set_pointer(&state, FL_MENU_GO_X + 14, FL_MENU_GO_Y + 12, false);
+    assert(state.phase == FL_PHASE_PREP);
+}
+
+static void test_the_map_opens_on_the_newest_level(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    for (uint8_t i = 0; i + 1 < FL_LEVEL_COUNT; ++i) {
+        state.level_stars[i] = 1;
+    }
+    fl_state_open_menu(&state);
+    uint8_t last = (uint8_t)(FL_LEVEL_COUNT - 1);
+    assert(state.menu_level == last);
+    int x = FL_LEVELS[last].node.x - state.menu_scroll;
+    assert(x > 0 && x < FL_VIEW_WIDTH);
+    tap_node(&state, 0);
+    /* Off the screen, the first node cannot be tapped from here... */
+    if (FL_LEVELS[0].node.x - state.menu_scroll < -FL_NODE_RADIUS) {
+        assert(state.menu_level == last);
+    }
+}
+
+static void test_a_cleared_level_stays_open_after_a_gap(void)
+{
+    /* A record from the eight-level campaign clears the chapter levels but
+     * not the interludes now between them. */
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.level_stars[0] = 3;
+    state.level_stars[3] = 2;
+    assert(fl_level_unlocked(&state, 1));
+    assert(!fl_level_unlocked(&state, 2));
+    assert(fl_level_unlocked(&state, 3));
+    assert(fl_level_unlocked(&state, 4));
+    assert(!fl_level_unlocked(&state, 5));
+}
+
+static void test_every_chapter_opening_has_a_boss_and_no_interlude_does(void)
+{
+    for (uint8_t l = 0; l < FL_LEVEL_COUNT; ++l) {
+        const fl_level_t *level = &FL_LEVELS[l];
+        bool boss = false;
+        for (uint8_t w = 0; w < level->wave_count; ++w) {
+            for (uint8_t b = 0; b < level->waves[w].batch_count; ++b) {
+                const fl_batch_t *batch = &level->waves[w].batches[b];
+                boss |= (batch->lane & FL_LANE_CHAMPION) != 0
+                        || batch->kind == FL_ENEMY_WYRM || batch->kind == FL_ENEMY_KING;
+            }
+        }
+        assert(boss == !level->interlude);
+    }
+}
+
+/* Start a level at the wave and batch that hold its first champion. */
+static bool start_at_champion(fl_state_t *state)
+{
+    for (uint8_t l = 0; l < FL_LEVEL_COUNT; ++l) {
+        const fl_level_t *level = &FL_LEVELS[l];
+        for (uint8_t w = 0; w < level->wave_count; ++w) {
+            for (uint8_t b = 0; b < level->waves[w].batch_count; ++b) {
+                if (!(level->waves[w].batches[b].lane & FL_LANE_CHAMPION)) {
+                    continue;
+                }
+                fl_state_reset(state, 1u);
+                memset(state->level_stars, 1, sizeof(state->level_stars));
+                assert(fl_state_start_level(state, l));
+                state->phase = FL_PHASE_WAVE;
+                state->wave = (uint8_t)(w + 1);
+                state->batch_index = b;
+                state->batch_spawned = 0;
+                state->spawn_timer = 0;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void test_a_champion_is_tough_rich_and_unshaken(void)
+{
+    fl_state_t state;
+    if (!start_at_champion(&state)) {
+        return;
+    }
+    fl_events_take(&state);
+    fl_state_update(&state);
+    assert(fl_events_take(&state) & FL_EVENT_BOSS);
+    fl_enemy_t *champion = NULL;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        if (state.enemies[i].alive && state.enemies[i].champion) {
+            champion = &state.enemies[i];
+        }
+    }
+    assert(champion);
+    const fl_wave_t *wave = &FL_LEVELS[state.level].waves[state.wave - 1];
+    float plain = (float)FL_ENEMY_STATS[champion->kind].hp * (float)wave->hp_mult / 100.0f;
+    assert(fabsf(champion->max_hp - plain * FL_CHAMPION_HP / 100.0f) < 0.5f);
+    assert(champion->armor == FL_ENEMY_STATS[champion->kind].armor + wave->armor_add
+                              + FL_CHAMPION_ARMOR);
 }
 
 static void test_the_pause_panel_resumes_and_leaves(void)
@@ -832,16 +970,36 @@ static void place_at(fl_state_t *state, int index, fl_enemy_kind_t kind,
     state->enemies[index].stun_ticks = 1000;   /* hold still */
 }
 
+/* Where a chapter's own level sits in the play order. */
+static uint8_t chapter_opening(uint8_t stage)
+{
+    for (uint8_t i = 0; i < FL_LEVEL_COUNT; ++i) {
+        if (FL_LEVELS[i].stage == stage && !FL_LEVELS[i].interlude) {
+            return i;
+        }
+    }
+    assert(!"no such chapter");
+    return 0;
+}
+
 static void test_the_new_towers_arrive_one_stage_at_a_time(void)
 {
+    const uint8_t mere = chapter_opening(1);
+    const uint8_t ridge = chapter_opening(2);
     assert(fl_new_tower(0) == FL_TOWER_NONE);
-    assert(fl_new_tower(1) == FL_TOWER_STORM);
-    assert(fl_new_tower(2) == FL_TOWER_RUNE);
+    assert(fl_new_tower(mere) == FL_TOWER_STORM);
+    assert(fl_new_tower(ridge) == FL_TOWER_RUNE);
+    /* An interlude only practises what its chapter brought. */
+    for (uint8_t i = 0; i < FL_LEVEL_COUNT; ++i) {
+        if (FL_LEVELS[i].interlude) {
+            assert(fl_new_tower(i) == FL_TOWER_NONE);
+        }
+    }
     fl_state_t state;
     fl_state_reset(&state, 1u);
     assert(!fl_tower_available(&state, FL_TOWER_STORM));
-    state.level_stars[0] = state.level_stars[1] = 1;
-    assert(fl_state_start_level(&state, 2));
+    state.level_stars[ridge - 1] = 1;
+    assert(fl_state_start_level(&state, ridge));
     assert(fl_tower_available(&state, FL_TOWER_STORM));
     assert(fl_tower_available(&state, FL_TOWER_RUNE));
     assert(fl_ring_count(&state) == 0);
@@ -890,6 +1048,58 @@ static void test_the_rune_beam_ignores_armour(void)
     fl_state_update(&state);
     assert(1000.0f - state.enemies[0].hp
            == (float)FL_TOWER_LEVELS[FL_TOWER_RUNE][0].damage);
+}
+
+/* Run a tower until its first shot is in the air and return the shot. */
+static const fl_projectile_t *first_shot(fl_state_t *state)
+{
+    for (int t = 0; t < 30; ++t) {
+        fl_state_update(state);
+        for (int i = 0; i < FL_MAX_PROJECTILES; ++i) {
+            if (state->projectiles[i].active) {
+                return &state->projectiles[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+static void test_a_shot_leaves_the_part_the_art_shows(void)
+{
+    /* A catapult turns its frame to a target on its left; its stone leaves
+     * the mirrored bucket. */
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_tower_t *siege = force_tower(&state, FL_TOWER_SIEGE);
+    assert(!fl_tower_faces_left(siege));
+    place_at(&state, 0, FL_ENEMY_RAIDER, (float)siege->x - 90.0f,
+             (float)siege->y + 10.0f, 50.0f);
+    float before_x, before_y;
+    fl_tower_muzzle(siege, &before_x, &before_y);
+    const fl_projectile_t *stone = first_shot(&state);
+    assert(stone);
+    assert(siege->aim == 4);
+    assert(fl_tower_faces_left(siege));
+    float mx, my;
+    fl_tower_muzzle(siege, &mx, &my);
+    assert(fabsf((mx - (float)siege->x) + (before_x - (float)siege->x)) < 0.01f);
+    assert(fabsf(my - before_y) < 0.01f);
+    assert(my < (float)siege->y - 30.0f);
+    assert(fabsf(stone->x - mx) < 8.0f && fabsf(stone->y - my) < 8.0f);
+
+    /* A ballista turns its head: the bolt starts at the tip, ahead of the
+     * mount towards an enemy straight below. */
+    fl_state_reset(&state, 1u);
+    fl_tower_t *guard = force_tower(&state, FL_TOWER_GUARD);
+    place_at(&state, 0, FL_ENEMY_RAIDER, (float)guard->x,
+             (float)guard->y + 90.0f, 50.0f);
+    const fl_projectile_t *bolt = first_shot(&state);
+    assert(bolt);
+    assert(guard->aim == 2);
+    fl_tower_muzzle(guard, &mx, &my);
+    assert(fabsf(mx - (float)guard->x) < 3.0f);
+    assert(my > (float)guard->y - (float)FL_TOWER_RIGS[FL_TOWER_GUARD][0].muzzle.h);
+    assert(fabsf(bolt->x - mx) < 1.0f);
 }
 
 static void test_a_hex_strips_the_armour_for_every_tower(void)
@@ -1340,6 +1550,11 @@ int main(void)
     test_the_next_button_starts_the_next_level();
     test_a_lost_run_offers_retry_and_map_only();
     test_the_map_picks_and_starts_a_level();
+    test_the_map_drags_and_a_drag_is_not_a_tap();
+    test_the_map_opens_on_the_newest_level();
+    test_a_cleared_level_stays_open_after_a_gap();
+    test_every_chapter_opening_has_a_boss_and_no_interlude_does();
+    test_a_champion_is_tough_rich_and_unshaken();
     test_the_pause_panel_resumes_and_leaves();
     test_every_level_walks_from_spawn_to_the_gate();
     test_reset_starts_in_prep();
@@ -1374,6 +1589,7 @@ int main(void)
     test_the_new_towers_arrive_one_stage_at_a_time();
     test_lightning_leaps_through_a_crowd();
     test_the_rune_beam_ignores_armour();
+    test_a_shot_leaves_the_part_the_art_shows();
     test_a_hex_strips_the_armour_for_every_tower();
     test_soldiers_march_out_and_hold_the_road();
     test_a_fallen_soldier_marches_out_again();

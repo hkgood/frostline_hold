@@ -78,6 +78,7 @@ typedef struct {
     float sx, sy;     /* where it was first seen: the arc starts here */
     float tx, ty;
     float total;      /* first-seen distance to the target */
+    float lift;       /* how far its muzzle stood above the tower's foot */
     int16_t aoe;
     uint8_t active, kind, flags;
 } shot_snap_t;
@@ -259,8 +260,8 @@ static void enemy_body(float ex, float ey, int kind, bool flies, float *bx,
 
 static void on_muzzle(const fl_tower_t *tower)
 {
-    float mx = (float)tower->x;
-    float my = (float)tower->y - fl_muzzle_height(tower->kind);
+    float mx, my;
+    fl_tower_muzzle(tower, &mx, &my);
     switch (tower->kind) {
     case FL_TOWER_GUARD:
         /* The string's snap throws a puff of frost off the deck. */
@@ -660,11 +661,35 @@ static void note_shot(shot_snap_t *s, const fl_projectile_t *p)
     s->ty = p->ty;
 }
 
-static void start_shot(shot_snap_t *s, const fl_projectile_t *p)
+/* How high over the ground a shot started: the model flies it from the
+ * muzzle, so its shadow starts at the foot of the tower that fired it. */
+static float muzzle_lift(const fl_state_t *model, const fl_projectile_t *p)
+{
+    float best = 24.0f * 24.0f;
+    float lift = 0.0f;
+    for (int i = 0; i < FL_MAX_TOWERS; ++i) {
+        const fl_tower_t *t = &model->towers[i];
+        if (!t->active || (uint8_t)t->kind != p->kind) {
+            continue;
+        }
+        float mx, my;
+        fl_tower_muzzle(t, &mx, &my);
+        float d = (p->x - mx) * (p->x - mx) + (p->y - my) * (p->y - my);
+        if (d < best) {
+            best = d;
+            lift = (float)t->y - my;
+        }
+    }
+    return lift > 0.0f ? lift : 0.0f;
+}
+
+static void start_shot(shot_snap_t *s, const fl_projectile_t *p,
+                       const fl_state_t *model)
 {
     note_shot(s, p);
     s->sx = p->x;
     s->sy = p->y;
+    s->lift = muzzle_lift(model, p);
     float dx = p->tx - p->x;
     float dy = p->ty - p->y;
     s->total = sqrtf(dx * dx + dy * dy);
@@ -686,7 +711,7 @@ static void compare_shots(const fl_state_t *model)
             continue;
         }
         if (!s->active) {
-            start_shot(s, p);
+            start_shot(s, p, model);
             continue;
         }
         /* The same slot may have landed and fired again within one tick:
@@ -695,7 +720,7 @@ static void compare_shots(const fl_state_t *model)
         float step = (float)p->speed / 30.0f * (float)(model->speed ? model->speed : 1);
         if (p->kind != s->kind || jump > step * 2.0f + 6.0f) {
             on_impact(s);
-            start_shot(s, p);
+            start_shot(s, p, model);
             continue;
         }
         note_shot(s, p);
@@ -938,7 +963,7 @@ void fx_update(const fl_state_t *model)
         snapshot(model);
         for (int i = 0; i < FL_MAX_PROJECTILES; ++i) {
             if (model->projectiles[i].active) {
-                start_shot(&S.shots[i], &model->projectiles[i]);
+                start_shot(&S.shots[i], &model->projectiles[i], model);
             }
         }
         return;
@@ -1000,7 +1025,7 @@ void fx_draw_ground(const fl_state_t *model)
 }
 
 /* A plus-shaped glint: ink case, paper core. */
-static void draw_glint(int x, int y, int r)
+void draw_glint(int x, int y, int r)
 {
     if (r <= 0) {
         DrawRectangle(x, y, 1, 1, FL_PAPER);
@@ -1207,8 +1232,10 @@ static void draw_frost_bolt(float x, float y, uint32_t tick, int seed)
     }
 }
 
-/* A boulder in flight: a rough stone turning over, a crack across it. */
-static void draw_boulder(float x, float y, float r, uint32_t tick, bool burning)
+/* A boulder: a rough stone turning over, a crack across it; the
+ * concussion stone is bound in an iron band. */
+void fx_draw_boulder(float x, float y, float r, uint32_t tick, bool burning,
+                     bool banded)
 {
     int ix = (int)lroundf(x);
     int iy = (int)lroundf(y);
@@ -1228,6 +1255,12 @@ static void draw_boulder(float x, float y, float r, uint32_t tick, bool burning)
     Vector2 c1 = {x - cosf(a) * r * 0.5f, y - sinf(a) * r * 0.5f};
     DrawLineV(c0, c1, FL_INK);
     DrawRectangle(ix - 1, iy - (int)r + 1, 2, 1, FL_PAPER);
+    if (banded) {
+        int half = (int)r;
+        DrawRectangle(ix - half, iy - 1, half * 2 + 1, 2, FL_INK);
+        DrawRectangle(ix - half / 2, iy - 1, 1, 1, FL_PAPER);
+        DrawRectangle(ix + half / 2, iy - 1, 1, 1, FL_PAPER);
+    }
     if (burning) {
         int frame = (int)((tick / 2u) % EMBER_FLAME_FRAMES);
         draw_padded(fv_assets.fx, fv_assets.ember_flame[frame],
@@ -1236,25 +1269,25 @@ static void draw_boulder(float x, float y, float r, uint32_t tick, bool burning)
     }
 }
 
-/* Lobbed shots fly a curve: the model moves them along the ground, the
- * view lifts them by a sine of how far they have come. */
-static float lob_height(const shot_snap_t *s, float x, float y, float tx, float ty)
+/* How far a shot has come from its muzzle to its target, 0..1. */
+static float shot_progress(const shot_snap_t *s, float x, float y, float tx,
+                           float ty)
 {
     float dx = tx - x;
     float dy = ty - y;
-    float left = sqrtf(dx * dx + dy * dy);
-    float progress = 1.0f - left / s->total;
-    if (progress < 0.0f) {
-        progress = 0.0f;
-    } else if (progress > 1.0f) {
-        progress = 1.0f;
-    }
+    float progress = 1.0f - sqrtf(dx * dx + dy * dy) / s->total;
+    return progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
+}
+
+/* Lobbed shots fly a curve: the model moves them straight from the muzzle
+ * to the target, the view lifts them by a sine of how far they have come. */
+static float lob_height(const shot_snap_t *s, float progress)
+{
     float peak = s->total * 0.42f;
     if (peak > 56.0f) {
         peak = 56.0f;
     }
-    /* It leaves from the arm's height and drops onto the target. */
-    return sinf(progress * PI_F) * peak + (1.0f - progress) * 6.0f;
+    return sinf(progress * PI_F) * peak;
 }
 
 void fx_draw_projectiles(const fl_state_t *model)
@@ -1285,17 +1318,25 @@ void fx_draw_projectiles(const fl_state_t *model)
             break;
         case FL_TOWER_SIEGE:
         case FL_TOWER_EMBER: {
-            float h = snap->active ? lob_height(snap, shot->x, shot->y, shot->tx,
-                                                shot->ty)
-                                   : 0.0f;
-            /* The shadow on the ground shrinks as the shot climbs. */
-            int sr = 4 - (int)(h / 20.0f);
-            draw_ground_shadow((int)shot->x, (int)shot->y + 2, sr < 2 ? 2 : sr, 1);
+            float progress = snap->active ? shot_progress(snap, shot->x, shot->y,
+                                                          shot->tx, shot->ty)
+                                          : 1.0f;
+            float h = snap->active ? lob_height(snap, progress) : 0.0f;
+            /* The shadow runs along the ground from the tower's foot and
+             * shrinks as the shot climbs; it only shows once clear of the
+             * tower, where the stone would hide it anyway. */
+            float ground = shot->y + (snap->active ? snap->lift : 0.0f)
+                                         * (1.0f - progress);
+            if (progress > 0.15f) {
+                int sr = 4 - (int)((h + ground - shot->y) / 20.0f);
+                draw_ground_shadow((int)shot->x, (int)ground + 2, sr < 2 ? 2 : sr, 1);
+            }
             float sy = shot->y - h;
             if (shot->kind == FL_TOWER_SIEGE) {
                 float r = shot->aoe > 24 ? 4.5f : 3.5f;
-                draw_boulder(shot->x, sy, r, model->tick + (uint32_t)i * 5u,
-                             (shot->flags & FL_SHOT_BURN) != 0);
+                fx_draw_boulder(shot->x, sy, r, model->tick + (uint32_t)i * 5u,
+                                (shot->flags & FL_SHOT_BURN) != 0,
+                                (shot->flags & FL_SHOT_STUN) != 0);
             } else {
                 /* The fire pot tumbles and sheds sparks behind it. */
                 for (int k = 1; k <= 3; ++k) {

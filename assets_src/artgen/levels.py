@@ -13,7 +13,6 @@ Each level is a plain dict so a designer can read it top to bottom:
     start_gold   gold at the start of the run
     lives        lives at the start of the run
     towers       tower kinds the build ring offers on this level
-    node         where the level sits on the campaign map
     art          how the terrain is drawn:
                    "engraving" - the AI plate already contains the road
                    "carve"     - the road is carved into an AI plate
@@ -32,47 +31,13 @@ from artgen.level_geom import (
     ENEMY_BANNERMAN, ENEMY_BURROWER, ENEMY_CROW, ENEMY_GOLEM, ENEMY_HUSK,
     ENEMY_KING, ENEMY_RAIDER, ENEMY_SAP, ENEMY_SHAMAN, ENEMY_SKITTER,
     ENEMY_SLIME, ENEMY_TITAN, ENEMY_WOLF, ENEMY_WYRM, LANE_A, LANE_B,
-    fillet_path, wave_score_bonus,
+    fillet_path,
 )
-from artgen.tower_data import TOWER_ORDER
-
-GOAL = geom.GOAL
-
-# Where the eight stages of the journey sit on the campaign map
-# (assets_src/ai/campaign_map_source.jpg). Each node sits on the landmark the
-# plate draws for it. Levels take these in order; the plate already shows
-# all eight, so adding a level never means redrawing it. The bottom of the
-# screen stays free for the level card.
-CAMPAIGN_NODES = [
-    (96, 250),    # 1 snow forest
-    (122, 318),   # 2 frozen lake
-    (356, 318),   # 3 mountain switchbacks
-    (408, 140),   # 4 mine
-    (250, 206),   # 5 glacier
-    (92, 150),    # 6 ruins
-    (84, 86),     # 7 frozen falls
-    (241, 46),    # 8 ice fortress
-]
-CAMPAIGN_PLATE = "campaign_map_source.jpg"
-
-# Bit (1 << kind) per tower kind; kinds are 1-based like FL_TOWER_*.
-TOWER_KIND = {name: index + 1 for index, name in enumerate(TOWER_ORDER)}
-
-# The armoury grows by one tower per stage from the second on, and a level
-# offers everything handed out so far. Each newcomer arrives one stage before
-# the enemy it answers, so the player has a level to learn it.
-STARTING_TOWERS = ("guard", "frost", "siege")
-TOWERS_STAGE_2 = STARTING_TOWERS + ("storm",)
-TOWERS_STAGE_3 = TOWERS_STAGE_2 + ("rune",)
-TOWERS_STAGE_4 = TOWERS_STAGE_3 + ("barracks",)
-TOWERS_STAGE_5 = TOWERS_STAGE_4 + ("ember",)
-
-
-def _wave(reward, hp_mult, armor_add, *batches):
-    wave = {"reward": reward, "hp_mult": hp_mult, "armor_add": armor_add,
-            "batches": list(batches)}
-    wave["score_bonus"] = wave_score_bonus(wave)
-    return wave
+from artgen.interludes import INTERLUDES
+from artgen.level_kit import (  # noqa: F401  (re-exported for the tools)
+    CHAMPION, GOAL, STARTING_TOWERS, TOWER_KIND, TOWERS_STAGE_2,
+    TOWERS_STAGE_3, TOWERS_STAGE_4, TOWERS_STAGE_5, wave as _wave,
+)
 
 
 # --- 1. Frostline Pass ---------------------------------------------------
@@ -88,7 +53,6 @@ FROSTLINE_PASS = {
     "start_gold": 190,
     "lives": 20,
     "towers": STARTING_TOWERS,
-    "node": CAMPAIGN_NODES[0],
     "art": "engraving",
     "plate": "terrain_source.jpg",
 }
@@ -142,14 +106,13 @@ GLASSMERE = {
         _wave(240, 560, 12, (ENEMY_RAIDER, 12, 14, LANE_A),
               (ENEMY_HUSK, 3, 36, LANE_A), (ENEMY_RAIDER, 12, 14, LANE_B),
               (ENEMY_SKITTER, 12, 10, LANE_B)),
-        _wave(300, 640, 14, (ENEMY_TITAN, 1, 60, LANE_A),
+        _wave(300, 640, 14, (ENEMY_SHAMAN, 1, 60, LANE_A | CHAMPION),
               (ENEMY_RAIDER, 10, 14, LANE_A), (ENEMY_RAIDER, 12, 14, LANE_B),
               (ENEMY_WOLF, 14, 10, LANE_B)),
     ],
     "start_gold": 220,
     "lives": 20,
     "towers": TOWERS_STAGE_2,
-    "node": CAMPAIGN_NODES[1],
     "art": "carve",
     "plate": "terrain_mere_source.jpg",
 }
@@ -206,14 +169,13 @@ HOLLOW_RIDGE = {
               (ENEMY_BANNERMAN, 1, 60, LANE_B)),
         _wave(250, 1495, 14, (ENEMY_TITAN, 1, 60, LANE_A),
               (ENEMY_RAIDER, 12, 14, LANE_A), (ENEMY_RAIDER, 12, 14, LANE_B)),
-        _wave(320, 1630, 16, (ENEMY_TITAN, 1, 60, LANE_A),
+        _wave(320, 1500, 16, (ENEMY_HUSK, 1, 60, LANE_A | CHAMPION),
               (ENEMY_WOLF, 16, 10, LANE_A), (ENEMY_TITAN, 1, 60, LANE_B),
               (ENEMY_RAIDER, 12, 14, LANE_B)),
     ],
     "start_gold": 240,
     "lives": 20,
     "towers": TOWERS_STAGE_3,
-    "node": CAMPAIGN_NODES[2],
     "art": "engraving",
     "plate": "terrain_ridge_source.jpg",
     "clear_behind": False,
@@ -276,7 +238,6 @@ IRONVEIN_MINE = {
     "start_gold": 260,
     "lives": 20,
     "towers": TOWERS_STAGE_4,
-    "node": CAMPAIGN_NODES[3],
     "art": "engraving",
     "plate": "terrain_mine_source.jpg",
     "carve_from": (318, 383),
@@ -331,14 +292,13 @@ WHITETHROAT_GLACIER = {
               (ENEMY_BURROWER, 6, 18, LANE_B), (ENEMY_CROW, 12, 10, LANE_B)),
         _wave(220, 535, 13, (ENEMY_TITAN, 1, 60, LANE_A),
               (ENEMY_SLIME, 5, 26, LANE_A), (ENEMY_CROW, 14, 9, LANE_B)),
-        _wave(300, 610, 15, (ENEMY_TITAN, 1, 60, LANE_A),
+        _wave(300, 610, 15, (ENEMY_GOLEM, 1, 60, LANE_A | CHAMPION),
               (ENEMY_CROW, 16, 8, LANE_A), (ENEMY_GOLEM, 3, 36, LANE_B),
               (ENEMY_SLIME, 5, 24, LANE_B)),
     ],
     "start_gold": 280,
     "lives": 20,
     "towers": TOWERS_STAGE_5,
-    "node": CAMPAIGN_NODES[4],
     "art": "engraving",
     "plate": "terrain_glacier_source.jpg",
 }
@@ -402,7 +362,6 @@ SLEEPING_RUINS = {
     "start_gold": 300,
     "lives": 20,
     "towers": TOWERS_STAGE_5,
-    "node": CAMPAIGN_NODES[5],
     "art": "carve",
     "plate": "terrain_ruins_source.jpg",
 }
@@ -467,7 +426,6 @@ FROZEN_FALLS = {
     "start_gold": 320,
     "lives": 20,
     "towers": TOWERS_STAGE_5,
-    "node": CAMPAIGN_NODES[6],
     "art": "engraving",
     "plate": "terrain_falls_source.jpg",
     "carve_from": (210, 410),
@@ -542,14 +500,53 @@ RIME_CITADEL = {
     "start_gold": 340,
     "lives": 20,
     "towers": TOWERS_STAGE_5,
-    "node": CAMPAIGN_NODES[7],
     "art": "engraving",
     "plate": "terrain_citadel_source.jpg",
     "carve_from": (200, 366),
 }
 
-LEVELS = [FROSTLINE_PASS, GLASSMERE, HOLLOW_RIDGE, IRONVEIN_MINE,
-          WHITETHROAT_GLACIER, SLEEPING_RUINS, FROZEN_FALLS, RIME_CITADEL]
+# The eight chapters of the journey. Each opens with its own level and,
+# except for the last, is followed by two interludes (interludes.py).
+CHAPTERS = [FROSTLINE_PASS, GLASSMERE, HOLLOW_RIDGE, IRONVEIN_MINE,
+            WHITETHROAT_GLACIER, SLEEPING_RUINS, FROZEN_FALLS, RIME_CITADEL]
+
+# The campaign map is a scroll of square AI plates laid side by side; the
+# view drags it sideways. Nodes are in scroll coordinates, one per level in
+# play order, and keep clear of the level card at the bottom of the screen.
+CAMPAIGN_PLATES = (
+    "campaign_map_1_source.jpg",
+    "campaign_map_2_source.jpg",
+    "campaign_map_3_source.jpg",
+)
+CAMPAIGN_WIDTH = 480 * len(CAMPAIGN_PLATES)
+CAMPAIGN_NODES = [
+    # The snow forest, the frozen lake and the foot of the mountains.
+    (70, 250), (130, 180), (196, 236), (262, 306), (330, 250), (384, 186),
+    (448, 252),
+    # The ridge, the mine and the glacier.
+    (514, 176), (574, 236), (636, 300), (704, 250), (760, 184), (826, 240),
+    (892, 300), (940, 226),
+    # The ruins, the falls and the citadel.
+    (1012, 170), (1076, 226), (1136, 290), (1204, 236), (1266, 300),
+    (1326, 236), (1392, 160),
+]
+
+
+def _play_order():
+    order = []
+    for stage, chapter in enumerate(CHAPTERS):
+        order.append(dict(chapter, stage=stage, interlude=False))
+        for interlude in INTERLUDES.get(chapter["key"], ()):
+            order.append(dict(interlude, stage=stage, interlude=True))
+    assert len(order) <= len(CAMPAIGN_NODES), "every level needs a map node"
+    for index, level in enumerate(order):
+        level["node"] = CAMPAIGN_NODES[index]
+    return order
+
+
+# Every level in play order, each tagged with its chapter ("stage"), whether
+# it is an interlude, and its node on the campaign map.
+LEVELS = _play_order()
 
 
 def routes(level):

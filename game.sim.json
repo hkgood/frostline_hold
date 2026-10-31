@@ -10,7 +10,9 @@
     "components/app_game_runtime/frostline_view.c",
     "components/app_game_runtime/frostline_text.c",
     "components/app_game_runtime/frostline_fx.c",
+    "components/app_game_runtime/frostline_towers.c",
     "components/app_game_runtime/frostline_scenery.c",
+    "components/app_game_runtime/frostline_terrain.c",
     "components/app_game_runtime/frostline_screens.c"
   ]
 }

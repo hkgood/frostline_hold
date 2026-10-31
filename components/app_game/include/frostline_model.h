@@ -79,8 +79,10 @@ extern "C" {
 #define FL_UPGRADE_CARD_GAP 16
 
 /* The campaign. A level index is 0-based; the data lives in FL_LEVELS. */
-#define FL_MAX_LEVELS 8         /* slots in the progress record */
+#define FL_MAX_LEVELS 24        /* slots in the progress record */
 #define FL_NODE_RADIUS 30       /* how close a tap must be to a map node */
+#define FL_DRAG_SLOP 8          /* px a press travels before it drags */
+enum { FL_DRAG_NONE, FL_DRAG_PRESSED, FL_DRAG_MOVING };
 
 /* The campaign map's level card, inside the bottom of the rounded glass. */
 #define FL_MENU_CARD_X 64
@@ -117,8 +119,8 @@ extern "C" {
 /* The settings screen: one row per setting, the back button below. A
  * volume row has a minus and a plus button round its level bar; the other
  * rows have one wide button. */
-#define FL_SET_ROW_Y0 104
-#define FL_SET_ROW_GAP 56
+#define FL_SET_ROW_Y0 96
+#define FL_SET_ROW_GAP 48
 #define FL_SET_ROW_H 40
 #define FL_SET_LABEL_X 64
 #define FL_SET_MINUS_X 236
@@ -127,7 +129,7 @@ extern "C" {
 #define FL_SET_WIDE_X 236
 #define FL_SET_WIDE_W 184
 #define FL_SET_BACK_X 180
-#define FL_SET_BACK_Y 396
+#define FL_SET_BACK_Y 390
 #define FL_SET_BACK_W 120
 #define FL_SET_BACK_H 40
 #define FL_VOLUME_MAX 4
@@ -137,6 +139,7 @@ typedef enum {
     FL_SET_ROW_SOUND,
     FL_SET_ROW_HAPTICS,
     FL_SET_ROW_LANGUAGE,
+    FL_SET_ROW_THEME,
     FL_SET_ROW_RESET,
     FL_SET_ROW_COUNT,
 } fl_settings_row_t;
@@ -197,6 +200,15 @@ typedef enum {
 #define FL_BEHAVIOUR_WYRM     9
 #define FL_BEHAVIOUR_KING     10
 
+/* A batch's lane byte: the lane in bit 0, and in the top bit the mark of a
+ * champion, the mini-boss that closes a chapter's opening level. A champion
+ * is a tougher, richer copy of its kind that shrugs off slows and stuns. */
+#define FL_LANE_MASK 0x01
+#define FL_LANE_CHAMPION 0x80
+#define FL_CHAMPION_HP 600       /* percent of its wave's health */
+#define FL_CHAMPION_ARMOR 3
+#define FL_CHAMPION_BOUNTY 5     /* times its kind's gold and points */
+
 /* A flyer is drawn and struck this far above the road it follows. */
 #define FL_FLY_HEIGHT 18
 /* The arc kind of the king's freezing beam; tower kinds stay below it. */
@@ -220,7 +232,12 @@ typedef struct {
     uint8_t sound;    /* 0..FL_VOLUME_MAX */
     uint8_t haptics;  /* 0 or 1 */
     uint8_t lang;     /* 0 = Chinese, 1 = English */
+    uint8_t theme;    /* FL_THEME_DAY or FL_THEME_NIGHT */
 } fl_settings_t;
+
+/* Day draws ink on paper; night swaps the two over the whole screen. */
+#define FL_THEME_DAY 0
+#define FL_THEME_NIGHT 1
 
 typedef struct {
     int16_t x, y;
@@ -250,6 +267,9 @@ typedef struct {
     uint32_t invested;   /* total gold spent, for the sell refund */
     int16_t rally_x, rally_y; /* barracks: where its soldiers hold the road */
     uint8_t shot_tick;   /* ticks since it last fired, for the recoil */
+    /* Towards its last target in eighths of a turn: 0 east, 2 south (the
+     * screen's y grows down). Only the art turns with it. */
+    uint8_t aim;
     uint16_t frozen_ticks; /* encased in the king's ice: it cannot fire */
     bool active;
 } fl_tower_t;
@@ -317,6 +337,7 @@ typedef struct {
     uint8_t stage;       /* golem: shell cracked; king: wards spent */
     uint8_t behaviour;   /* FL_BEHAVIOUR_* */
     uint8_t soldier;     /* 1-based soldier holding it, 0 when none */
+    uint8_t champion;    /* a chapter's mini-boss */
     uint8_t alive;
 } fl_enemy_t;
 
@@ -349,6 +370,12 @@ typedef struct {
     uint8_t level_stars[FL_MAX_LEVELS];  /* 0 = not cleared yet */
     uint8_t level;         /* the level being played, or last played */
     uint8_t menu_level;    /* the node picked on the campaign map */
+    /* The campaign map is wider than the screen and drags sideways. A press
+     * there may become a drag; a release that never dragged is a tap. */
+    int16_t menu_scroll;   /* map x at the screen's left edge */
+    int16_t drag_x;        /* screen x where the press began */
+    int16_t drag_scroll;   /* menu_scroll when it began */
+    uint8_t drag;          /* FL_DRAG_* */
     uint16_t run_serial;   /* counts started runs, so a run is saved once */
     uint8_t start_lives;   /* the lives this level grants, for the stars */
     uint16_t leaks;       /* enemies that reached the gate */
@@ -416,9 +443,15 @@ uint8_t fl_level_count(void);
 bool fl_tower_available(const fl_state_t *state, fl_tower_kind_t kind);
 /** The tower a level offers for the first time, or FL_TOWER_NONE. */
 fl_tower_kind_t fl_new_tower(uint8_t level);
-/* How high over its foot a tower's shot leaves it: the ballista deck, the
- * spire's orb, the obelisk's eye. The art is drawn to match. */
-float fl_muzzle_height(fl_tower_kind_t kind);
+/* Which of its four looks a tower wears: level 1, level 2, or the level 3
+ * branch its second upgrade chose. */
+int fl_tower_variant(const fl_tower_t *tower);
+/* Whether a catapult, which turns its whole frame, faces left. */
+bool fl_tower_faces_left(const fl_tower_t *tower);
+/* Where a tower's shot leaves it for its current aim: the ballista's bolt
+ * tip, the catapult's bucket at the top of its swing, the spire's orb. The
+ * art is drawn to the same rig (data/frostline_tower_rig.h). */
+void fl_tower_muzzle(const fl_tower_t *tower, float *x, float *y);
 /** Whether an enemy is in the air: no soldier, hero or siege can touch it. */
 bool fl_enemy_flies(const fl_enemy_t *enemy);
 /** The number of waves in the current level. */

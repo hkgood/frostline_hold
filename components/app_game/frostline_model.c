@@ -10,6 +10,7 @@
 
 #include "include/frostline_model.h"
 #include "data/frostline_level.h"
+#include "data/frostline_tower_rig.h"
 
 #define FL_NO_TARGET 0xFF
 #define FL_SLOW_TICKS 45
@@ -258,7 +259,8 @@ static bool fl_grounded(const fl_enemy_t *enemy)
 /* The titan and the bosses shrug off slows and stuns. */
 static bool fl_resists_control(const fl_enemy_t *enemy)
 {
-    return enemy->behaviour == FL_BEHAVIOUR_TITAN
+    return enemy->champion
+           || enemy->behaviour == FL_BEHAVIOUR_TITAN
            || enemy->behaviour == FL_BEHAVIOUR_WYRM
            || enemy->behaviour == FL_BEHAVIOUR_KING;
 }
@@ -277,11 +279,6 @@ static float fl_aim_y(const fl_enemy_t *enemy)
 
 static fl_enemy_t *fl_spawn_enemy_at(fl_state_t *state, uint8_t kind,
                                      uint8_t lane, float dist);
-
-static void fl_spawn_enemy(fl_state_t *state, uint8_t kind, uint8_t lane)
-{
-    fl_spawn_enemy_at(state, kind, lane, 0.0f);
-}
 
 /* A brood called up around a boss, strung out behind it on its road. */
 static void fl_call_brood(fl_state_t *state, const fl_enemy_t *caller,
@@ -446,9 +443,10 @@ static void fl_damage_enemy(fl_state_t *state, fl_enemy_t *enemy,
     }
     enemy->alive = 0;
     state->kills++;
-    state->gold += (uint16_t)FL_ENEMY_STATS[enemy->kind].bounty;
-    state->score_kills += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
-    state->score += (uint32_t)FL_ENEMY_STATS[enemy->kind].score;
+    const uint32_t prize = enemy->champion ? FL_CHAMPION_BOUNTY : 1u;
+    state->gold += (uint16_t)(FL_ENEMY_STATS[enemy->kind].bounty * prize);
+    state->score_kills += (uint32_t)FL_ENEMY_STATS[enemy->kind].score * prize;
+    state->score += (uint32_t)FL_ENEMY_STATS[enemy->kind].score * prize;
     state->last_kill_kind = (uint8_t)enemy->kind;
     fl_raise(state, FL_EVENT_KILLED);
     if (enemy->behaviour == FL_BEHAVIOUR_SPLITTER) {
@@ -487,17 +485,55 @@ static void fl_spawn_projectile(fl_state_t *state, fl_tower_kind_t kind,
     }
 }
 
-/* Where a tower's shot leaves it: the ballista deck, the spire's tip. The
- * view draws bolts and beams from the points the model records, so the two
- * cannot disagree. */
-float fl_muzzle_height(fl_tower_kind_t kind)
+int fl_tower_variant(const fl_tower_t *tower)
 {
-    switch (kind) {
-    case FL_TOWER_STORM: return 34.0f;
-    case FL_TOWER_RUNE:  return 34.0f;
-    case FL_TOWER_EMBER: return 30.0f;
-    default:             return 20.0f;
+    if (tower->level >= 3) {
+        int option = fl_tower_option(tower, 1);
+        return 2 + (option < 0 ? 0 : option);
     }
+    return tower->level >= 2 ? 1 : 0;
+}
+
+bool fl_tower_faces_left(const fl_tower_t *tower)
+{
+    return tower->aim >= 3 && tower->aim <= 5;
+}
+
+/* The unit step towards each eighth of a turn. */
+static const float FL_AIM_DX[8] = {1.0f, 0.7071f, 0.0f, -0.7071f,
+                                   -1.0f, -0.7071f, 0.0f, 0.7071f};
+static const float FL_AIM_DY[8] = {0.0f, 0.7071f, 1.0f, 0.7071f,
+                                   0.0f, -0.7071f, -1.0f, -0.7071f};
+
+static uint8_t fl_aim_towards(float dx, float dy)
+{
+    if (dx == 0.0f && dy == 0.0f) {
+        return 0;
+    }
+    float turns = atan2f(dy, dx) / (2.0f * 3.14159265f);
+    int eighth = (int)lroundf(turns * 8.0f);
+    return (uint8_t)((eighth % 8 + 8) % 8);
+}
+
+/* The view draws bolts and beams from the points the model records, so the
+ * two cannot disagree. */
+void fl_tower_muzzle(const fl_tower_t *tower, float *x, float *y)
+{
+    int kind = (int)tower->kind;
+    if (kind <= FL_TOWER_NONE || kind >= FL_TOWER_KIND_COUNT) {
+        *x = (float)tower->x;
+        *y = (float)tower->y;
+        return;
+    }
+    const fl_rig_point_t *m = &FL_TOWER_RIGS[kind][fl_tower_variant(tower)].muzzle;
+    float dx = (float)m->dx;
+    if (FL_TOWER_MIRRORS[kind] && fl_tower_faces_left(tower)) {
+        dx = -dx;
+    }
+    float reach = (float)FL_TOWER_REACH[kind];
+    uint8_t aim = (uint8_t)(tower->aim & 7u);
+    *x = (float)tower->x + dx + FL_AIM_DX[aim] * reach;
+    *y = (float)tower->y - (float)m->h + FL_AIM_DY[aim] * reach;
 }
 
 static uint32_t fl_shot_event(fl_tower_kind_t kind)
@@ -523,8 +559,10 @@ static fl_arc_t *fl_new_arc(fl_state_t *state, const fl_tower_t *tower)
         }
     }
     fl_arc_t *arc = &state->arcs[pick];
-    arc->x[0] = tower->x;
-    arc->y[0] = (int16_t)((float)tower->y - fl_muzzle_height(tower->kind));
+    float mx, my;
+    fl_tower_muzzle(tower, &mx, &my);
+    arc->x[0] = (int16_t)lroundf(mx);
+    arc->y[0] = (int16_t)lroundf(my);
     arc->count = 1;
     arc->kind = (uint8_t)tower->kind;
     arc->ttl = FL_ARC_TICKS;
@@ -693,9 +731,9 @@ static void fl_fire_projectile(fl_state_t *state, const fl_tower_t *tower,
         flags |= FL_SHOT_ZONE;
         zone_ticks = (uint8_t)(stat->extra > 255 ? 255 : stat->extra);
     }
-    fl_spawn_projectile(state, tower->kind, target, stat->damage,
-                        (float)tower->x,
-                        (float)tower->y - fl_muzzle_height(tower->kind),
+    float mx, my;
+    fl_tower_muzzle(tower, &mx, &my);
+    fl_spawn_projectile(state, tower->kind, target, stat->damage, mx, my,
                         enemy->x, fl_aim_y(enemy), flags, stat->projectile_speed,
                         stat->aoe, stat->slow_percent, zone_ticks);
 }
@@ -727,6 +765,8 @@ static void fl_update_towers(fl_state_t *state)
         if (target < 0) {
             continue;
         }
+        tower->aim = fl_aim_towards(state->enemies[target].x - (float)tower->x,
+                                    state->enemies[target].y - (float)tower->y);
         uint8_t flags = 0;
         if (stat.pierce) {
             flags |= FL_SHOT_PIERCE;
@@ -1534,7 +1574,15 @@ static void fl_update_spawning(fl_state_t *state)
             return;
         }
         if (state->batch_spawned < batch->count) {
-            fl_spawn_enemy(state, batch->kind, batch->lane);
+            fl_enemy_t *enemy = fl_spawn_enemy_at(
+                state, batch->kind, batch->lane & FL_LANE_MASK, 0.0f);
+            if (enemy && (batch->lane & FL_LANE_CHAMPION)) {
+                enemy->champion = 1;
+                enemy->max_hp = enemy->max_hp * (float)FL_CHAMPION_HP / 100.0f;
+                enemy->hp = enemy->max_hp;
+                enemy->armor = (int16_t)(enemy->armor + FL_CHAMPION_ARMOR);
+                fl_raise(state, FL_EVENT_BOSS);
+            }
             state->batch_spawned++;
             state->spawn_timer = batch->interval;
             return;
@@ -1834,6 +1882,7 @@ fl_settings_t fl_default_settings(void)
         .sound = FL_VOLUME_MAX,
         .haptics = 1,
         .lang = 0,
+        .theme = FL_THEME_DAY,
     };
 }
 
@@ -1853,7 +1902,17 @@ bool fl_level_unlocked(const fl_state_t *state, uint8_t level)
     if (level >= FL_LEVEL_COUNT) {
         return false;
     }
-    return level == 0 || state->level_stars[level - 1] > 0;
+    /* A cleared level stays open even when the one before it is not, which
+     * is how a record from the eight-level campaign arrives. */
+    return level == 0 || state->level_stars[level] > 0
+           || state->level_stars[level - 1] > 0;
+}
+
+/* Keep the campaign scroll on the map. */
+static int16_t fl_clamp_scroll(int32_t scroll)
+{
+    const int32_t max = FL_CAMPAIGN_WIDTH - FL_VIEW_WIDTH;
+    return (int16_t)(scroll < 0 ? 0 : (scroll > max ? max : scroll));
 }
 
 bool fl_state_start_level(fl_state_t *state, uint8_t level)
@@ -1882,6 +1941,9 @@ void fl_state_open_menu(fl_state_t *state)
         }
     }
     state->menu_level = pick;
+    /* Bring the picked node to the middle of the screen. */
+    state->menu_scroll = fl_clamp_scroll(FL_LEVELS[pick].node.x - FL_VIEW_WIDTH / 2);
+    state->drag = FL_DRAG_NONE;
     fl_raise(state, FL_EVENT_MENU);
 }
 
@@ -1980,6 +2042,8 @@ bool fl_build_tower(fl_state_t *state, int16_t x, int16_t y, fl_tower_kind_t kin
         tower->cooldown = 0;
         tower->invested = stat->cost;
         tower->shot_tick = 255;
+        /* Until its first shot it looks in towards the middle of the map. */
+        tower->aim = tower->x > FL_VIEW_WIDTH / 2 ? 4 : 0;
         tower->frozen_ticks = 0;
         /* A hall musters on the stretch of road nearest to it. */
         fl_nearest_road_point(state, (float)tower->x, (float)tower->y,
@@ -2143,8 +2207,9 @@ static void fl_menu_tap(fl_state_t *state, int32_t x, int32_t y)
         fl_state_open_title(state);
         return;
     }
+    /* Nodes sit on the scroll; the buttons above stay put on the screen. */
     for (uint8_t i = 0; i < FL_LEVEL_COUNT; ++i) {
-        float dx = (float)(x - FL_LEVELS[i].node.x);
+        float dx = (float)(x + state->menu_scroll - FL_LEVELS[i].node.x);
         float dy = (float)(y - FL_LEVELS[i].node.y);
         if (dx * dx + dy * dy <= (float)FL_NODE_RADIUS * FL_NODE_RADIUS
                 && fl_level_unlocked(state, i)) {
@@ -2274,6 +2339,10 @@ static void fl_settings_tap(fl_state_t *state, int32_t x, int32_t y)
                 break;
             case FL_SET_ROW_LANGUAGE:
                 s->lang = s->lang ? 0 : 1;
+                fl_settings_changed(state);
+                break;
+            case FL_SET_ROW_THEME:
+                s->theme = s->theme == FL_THEME_NIGHT ? FL_THEME_DAY : FL_THEME_NIGHT;
                 fl_settings_changed(state);
                 break;
             case FL_SET_ROW_RESET:
@@ -2493,18 +2562,55 @@ static bool fl_ring_tap(fl_state_t *state, int32_t x, int32_t y)
     return true;
 }
 
+/* The campaign map answers the whole gesture: a press arms it, moving past
+ * the slop drags the scroll, and a release that never dragged is a tap. A
+ * press that began on another screen is not armed, so the tap that opened
+ * the map does not land on it as well. */
+static void fl_menu_pointer(fl_state_t *state, int32_t x, int32_t y,
+                            bool pressed, bool released)
+{
+    if (pressed) {
+        state->drag = FL_DRAG_PRESSED;
+        state->drag_x = (int16_t)x;
+        state->drag_scroll = state->menu_scroll;
+        return;
+    }
+    if (state->drag == FL_DRAG_NONE) {
+        return;
+    }
+    const int32_t moved = x - state->drag_x;
+    if (state->drag == FL_DRAG_PRESSED
+            && (moved > FL_DRAG_SLOP || moved < -FL_DRAG_SLOP)) {
+        state->drag = FL_DRAG_MOVING;
+    }
+    if (state->drag == FL_DRAG_MOVING) {
+        state->menu_scroll = fl_clamp_scroll(state->drag_scroll - moved);
+    }
+    if (released) {
+        /* Nodes are hit in map coordinates, so a point off the screen could
+         * still land on a node scrolled out of view. */
+        bool tap = state->drag == FL_DRAG_PRESSED
+                   && x >= 0 && x < FL_VIEW_WIDTH;
+        state->drag = FL_DRAG_NONE;
+        if (tap) {
+            fl_menu_tap(state, x, y);
+        }
+    }
+}
+
 void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
 {
     bool pressed = down && !state->pointer_down_prev;
+    bool released = !down && state->pointer_down_prev;
     state->pointer_down_prev = down;
+    if (state->phase == FL_PHASE_MENU) {
+        fl_menu_pointer(state, x, y, pressed, released);
+        return;
+    }
     if (!pressed) {
         return;
     }
 
-    if (state->phase == FL_PHASE_MENU) {
-        fl_menu_tap(state, x, y);
-        return;
-    }
     if (state->phase == FL_PHASE_TITLE) {
         fl_title_tap(state, x, y);
         return;
@@ -2644,6 +2750,7 @@ uint32_t fl_state_hash(const fl_state_t *state)
     }
     FL_MIX(state->level);
     FL_MIX(state->menu_level);
+    FL_MIX(state->menu_scroll);
     FL_MIX(state->wave);
     FL_MIX(state->phase);
     FL_MIX(state->kills);
@@ -2705,7 +2812,7 @@ int fl_state_json_sfx(const fl_state_t *state, const char *sfx,
     const char *sound = (sfx && sfx[0]) ? sfx : "";
     int size = snprintf(output, capacity,
                         "{\"phase\":\"%s\",\"level\":%u,\"menu_level\":%u,"
-                        "\"paused\":%s,\"ring_spot\":%d,\"ring_post\":%d,"
+                        "\"menu_scroll\":%d,\"paused\":%s,\"ring_spot\":%d,\"ring_post\":%d,"
                         "\"ring_pick\":%d,\"selected_tower\":%d,"
                         "\"wave\":%u,\"gold\":%u,\"lives\":%u,"
                         "\"score\":%lu,\"score_kills\":%lu,\"score_waves\":%lu,"
@@ -2713,7 +2820,7 @@ int fl_state_json_sfx(const fl_state_t *state, const char *sfx,
                         "\"kills\":%lu,\"tick\":%lu,\"speed\":%u,"
                         "\"sfx\":\"%s\",\"state_hash\":\"%08lx\"}",
                         fl_phase_name(state), (unsigned)state->level,
-                        (unsigned)state->menu_level,
+                        (unsigned)state->menu_level, (int)state->menu_scroll,
                         state->paused ? "true" : "false",
                         (int)state->ring_spot, (int)state->ring_post,
                         (int)state->ring_pick, (int)state->selected_tower,

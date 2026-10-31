@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-#define FROSTLINE_RECORD_VERSION 3
-#define FROSTLINE_RECORD_LEVELS 8   /* matches FL_MAX_LEVELS in the model */
+#define FROSTLINE_RECORD_VERSION 4
+#define FROSTLINE_RECORD_LEVELS 24  /* matches FL_MAX_LEVELS in the model */
 
 /* The campaign as the player left it on this device: per level, the stars
  * earned (0 = not cleared yet) and the best score; which enemies the
@@ -17,19 +17,18 @@ typedef struct {
     uint32_t version;
     uint32_t best_score[FROSTLINE_RECORD_LEVELS];
     uint8_t stars[FROSTLINE_RECORD_LEVELS];
-    /* Version 3 from here on. */
     uint32_t seen_enemies;   /* one bit per enemy kind */
     uint8_t music;           /* 0..4 */
     uint8_t sound;           /* 0..4 */
     uint8_t haptics;
     uint8_t lang;            /* 0 = Chinese, 1 = English */
     uint8_t has_settings;    /* 0 until the settings were first stored */
-    uint8_t reserved[3];
+    uint8_t theme;           /* 0 = day, 1 = night */
+    uint8_t reserved[2];
 } frostline_record_t;
 
-/* Load the stored record. A missing or damaged record reads as zeroes; a
- * record from the single-level game becomes the first level's entry, and a
- * version 2 record keeps its campaign with default settings. */
+/* Load the stored record. A missing or damaged record reads as zeroes; an
+ * older record keeps its campaign (and its settings, when it had them). */
 bool frostline_record_load(frostline_record_t *record);
 
 /* Store the record. On the device this goes to NVS, on the Host to a file

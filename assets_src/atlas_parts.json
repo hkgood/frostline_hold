@@ -1,0 +1,242 @@
+{
+  "image": "parts_atlas_source.png",
+  "columns": 8,
+  "rows": 10,
+  "output_cell": 36,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "head_crossbow_loaded_0"
+    },
+    {
+      "name": "head_crossbow_loaded_1"
+    },
+    {
+      "name": "head_crossbow_loaded_2"
+    },
+    {
+      "name": "head_crossbow_loaded_3"
+    },
+    {
+      "name": "head_crossbow_loaded_4"
+    },
+    {
+      "name": "head_crossbow_loaded_5"
+    },
+    {
+      "name": "head_crossbow_loaded_6"
+    },
+    {
+      "name": "head_crossbow_loaded_7"
+    },
+    {
+      "name": "head_crossbow_loosed_0"
+    },
+    {
+      "name": "head_crossbow_loosed_1"
+    },
+    {
+      "name": "head_crossbow_loosed_2"
+    },
+    {
+      "name": "head_crossbow_loosed_3"
+    },
+    {
+      "name": "head_crossbow_loosed_4"
+    },
+    {
+      "name": "head_crossbow_loosed_5"
+    },
+    {
+      "name": "head_crossbow_loosed_6"
+    },
+    {
+      "name": "head_crossbow_loosed_7"
+    },
+    {
+      "name": "head_crossbow_drawn_0"
+    },
+    {
+      "name": "head_crossbow_drawn_1"
+    },
+    {
+      "name": "head_crossbow_drawn_2"
+    },
+    {
+      "name": "head_crossbow_drawn_3"
+    },
+    {
+      "name": "head_crossbow_drawn_4"
+    },
+    {
+      "name": "head_crossbow_drawn_5"
+    },
+    {
+      "name": "head_crossbow_drawn_6"
+    },
+    {
+      "name": "head_crossbow_drawn_7"
+    },
+    {
+      "name": "head_ballista_loaded_0"
+    },
+    {
+      "name": "head_ballista_loaded_1"
+    },
+    {
+      "name": "head_ballista_loaded_2"
+    },
+    {
+      "name": "head_ballista_loaded_3"
+    },
+    {
+      "name": "head_ballista_loaded_4"
+    },
+    {
+      "name": "head_ballista_loaded_5"
+    },
+    {
+      "name": "head_ballista_loaded_6"
+    },
+    {
+      "name": "head_ballista_loaded_7"
+    },
+    {
+      "name": "head_ballista_loosed_0"
+    },
+    {
+      "name": "head_ballista_loosed_1"
+    },
+    {
+      "name": "head_ballista_loosed_2"
+    },
+    {
+      "name": "head_ballista_loosed_3"
+    },
+    {
+      "name": "head_ballista_loosed_4"
+    },
+    {
+      "name": "head_ballista_loosed_5"
+    },
+    {
+      "name": "head_ballista_loosed_6"
+    },
+    {
+      "name": "head_ballista_loosed_7"
+    },
+    {
+      "name": "head_ballista_drawn_0"
+    },
+    {
+      "name": "head_ballista_drawn_1"
+    },
+    {
+      "name": "head_ballista_drawn_2"
+    },
+    {
+      "name": "head_ballista_drawn_3"
+    },
+    {
+      "name": "head_ballista_drawn_4"
+    },
+    {
+      "name": "head_ballista_drawn_5"
+    },
+    {
+      "name": "head_ballista_drawn_6"
+    },
+    {
+      "name": "head_ballista_drawn_7"
+    },
+    {
+      "name": "head_repeater_loaded_0"
+    },
+    {
+      "name": "head_repeater_loaded_1"
+    },
+    {
+      "name": "head_repeater_loaded_2"
+    },
+    {
+      "name": "head_repeater_loaded_3"
+    },
+    {
+      "name": "head_repeater_loaded_4"
+    },
+    {
+      "name": "head_repeater_loaded_5"
+    },
+    {
+      "name": "head_repeater_loaded_6"
+    },
+    {
+      "name": "head_repeater_loaded_7"
+    },
+    {
+      "name": "head_repeater_loosed_0"
+    },
+    {
+      "name": "head_repeater_loosed_1"
+    },
+    {
+      "name": "head_repeater_loosed_2"
+    },
+    {
+      "name": "head_repeater_loosed_3"
+    },
+    {
+      "name": "head_repeater_loosed_4"
+    },
+    {
+      "name": "head_repeater_loosed_5"
+    },
+    {
+      "name": "head_repeater_loosed_6"
+    },
+    {
+      "name": "head_repeater_loosed_7"
+    },
+    {
+      "name": "head_repeater_drawn_0"
+    },
+    {
+      "name": "head_repeater_drawn_1"
+    },
+    {
+      "name": "head_repeater_drawn_2"
+    },
+    {
+      "name": "head_repeater_drawn_3"
+    },
+    {
+      "name": "head_repeater_drawn_4"
+    },
+    {
+      "name": "head_repeater_drawn_5"
+    },
+    {
+      "name": "head_repeater_drawn_6"
+    },
+    {
+      "name": "head_repeater_drawn_7"
+    },
+    {
+      "name": "spare_pot"
+    },
+    {
+      "name": "orbit_shard"
+    },
+    {
+      "name": "orbit_stone"
+    },
+    {
+      "name": "orbit_rune"
+    },
+    {
+      "name": "door_open"
+    }
+  ],
+  "animations": []
+}

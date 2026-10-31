@@ -30,27 +30,36 @@ ROAD_WIDTH_B = 12
 CORRIDOR_MARGIN = 20
 
 
-def _threshold(source, size=480):
-    """AI art to a strict two-state bitmap, keeping its mid tones.
-
-    A hard threshold throws away the engraving's grey hatching. Sharpening
-    first and then ordered-dithering keeps every pen line crisp while the
-    forest and cliff shading survive as fine dot patterns.
-    """
+def _plate_grey(source, size=480):
+    """An AI plate as a sharpened greyscale image, `size` px square."""
     grey = Image.open(source).convert("L").resize((size, size), Image.BOX)
-    grey = grey.filter(ImageFilter.UnsharpMask(radius=1.2, percent=90,
+    return grey.filter(ImageFilter.UnsharpMask(radius=1.2, percent=90,
                                                threshold=2))
+
+
+def _dither(grey):
+    """A greyscale image to a strict two-state bitmap, keeping its mid tones.
+
+    A hard threshold throws away the engraving's grey hatching. Ordered
+    dithering after sharpening keeps every pen line crisp while the forest
+    and cliff shading survive as fine dot patterns.
+    """
     pixels = grey.load()
-    canvas = Canvas(size, size)
-    for y in range(size):
+    canvas = Canvas(grey.width, grey.height)
+    for y in range(grey.height):
         row = BAYER4[y % 4]
-        for x in range(size):
+        for x in range(grey.width):
             tone = pixels[x, y] / 255.0
             # Paper stays paper and ink stays ink; only the middle dithers.
             tone = min(1.0, max(0.0, (tone - 0.14) / 0.74))
             threshold = (row[x % 4] + 0.5) / 16.0
             canvas.set(x, y, WHITE if tone > threshold else BLACK)
     return canvas
+
+
+def _threshold(source, size=480):
+    """AI art to a strict two-state bitmap."""
+    return _dither(_plate_grey(source, size))
 
 
 # The castle plate: its own origin relative to the goal, and where the view
@@ -348,18 +357,59 @@ def build_level_background(level):
     return canvas
 
 
-def build_campaign_background():
-    """The campaign map: the journey plate with a clearing at every node.
+# How far each side of a seam the two plates fade into open snow, px.
+SEAM_MELT = 40
 
+
+def _melt(grey, seam):
+    """Blend two plates where they meet, so no cut shows.
+
+    Each side of the seam cross-fades into its neighbour's edge mirrored
+    across the seam, reaching half and half on the seam itself, so tone
+    and snow texture run straight through it. A light lift towards paper
+    thins the mirrored ghost of any landmark near the edge, and the blend's
+    width wanders down the seam so it reads as drifts, not a ruled band.
+    """
+    src = grey.copy().load()
+    pixels = grey.load()
+    for y in range(grey.height):
+        # Smooth wobble: interpolate a random width every 16 rows.
+        block, frac = divmod(y, 16)
+        a = S.hash01(block, seam, 31)
+        b = S.hash01(block + 1, seam, 31)
+        reach = SEAM_MELT * (0.65 + 0.7 * (a + (b - a) * frac / 16.0))
+        for x in range(max(0, seam - int(reach)),
+                       min(grey.width, seam + int(reach))):
+            mirror = 2 * seam - 1 - x
+            d = min(1.0, abs(x + 0.5 - seam) / reach)
+            near = 1.0 - d * d * (3.0 - 2.0 * d)   # 1 at the seam, 0 at reach
+            tone = src[x, y] * (1.0 - 0.5 * near) + src[mirror, y] * 0.5 * near
+            pixels[x, y] = int(255 - (255 - tone) * (1.0 - 0.35 * near))
+
+
+def build_campaign_background():
+    """The campaign scroll: the journey plates with a clearing at every node.
+
+    The plates are laid side by side in greyscale and melted together at
+    each seam before one dither pass, so the scroll reads as one drawing.
     The trail and the medallions are drawn by the view, so a locked stage
-    can look different from a cleared one.
+    can look different from a cleared one. A chapter's own level has a
+    medallion and an interlude a small marker, so their clearings differ.
     """
     rng = random.Random(0xCA4)
-    canvas = _threshold(AI_DIR / campaign.CAMPAIGN_PLATE)
-    # Only the stages that exist get a clearing; the rest of the journey
-    # stays drawn until its level is added.
-    for x, y in campaign.CAMPAIGN_NODES[:len(campaign.LEVELS)]:
-        clear_disc(canvas, x, y + 2, 17, 9, rng)
+    size = 480
+    grey = Image.new("L", (campaign.CAMPAIGN_WIDTH, size), 255)
+    for index, plate in enumerate(campaign.CAMPAIGN_PLATES):
+        grey.paste(_plate_grey(AI_DIR / plate, size), (index * size, 0))
+    for index in range(1, len(campaign.CAMPAIGN_PLATES)):
+        _melt(grey, index * size)
+    canvas = _dither(grey)
+    for level in campaign.LEVELS:
+        x, y = level["node"]
+        if level["interlude"]:
+            clear_disc(canvas, x, y, 11, 7, rng)
+        else:
+            clear_disc(canvas, x, y + 2, 17, 9, rng)
     return canvas
 
 

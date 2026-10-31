@@ -515,8 +515,8 @@ void screens_draw_title(const fl_state_t *model)
         }
         int y = TOPS[i] + (int)((1.0f - rise) * 140.0f);
         /* A dark plinth under each button lifts it off the busy plate. */
-        DrawRectangle(FL_TITLE_BTN_X - 4, y - 4, FL_TITLE_BTN_W + 8,
-                      FL_TITLE_BTN_H + 8, FL_INK);
+        fill_plate(FL_TITLE_BTN_X - 4, y - 4, FL_TITLE_BTN_W + 8,
+                   FL_TITLE_BTN_H + 8, PLATE_CUT + 3, FL_INK);
         draw_button(FL_TITLE_BTN_X, y, FL_TITLE_BTN_W, FL_TITLE_BTN_H,
                     fl_tr(LABELS[i]), true, i == 0 && rise >= 1.0f, frame);
         if (i == 0 && rise >= 1.0f) {
@@ -583,16 +583,14 @@ void screens_draw_settings(const fl_state_t *model)
     draw_night(frame, 1.0f, 18);
 
     /* The panel, with a second frame inside the first. */
-    draw_panel(SET_PANEL_X, SET_PANEL_Y, SET_PANEL_W, SET_PANEL_H, false);
-    DrawRectangleLines(SET_PANEL_X + 4, SET_PANEL_Y + 4, SET_PANEL_W - 8,
-                       SET_PANEL_H - 8, FL_PAPER);
+    draw_frame_panel(SET_PANEL_X, SET_PANEL_Y, SET_PANEL_W, SET_PANEL_H);
     fl_text_draw_centered(fl_tr(FL_TXT_UI_SETTINGS), 240, SET_PANEL_Y + 18,
                           FL_FONT_HUGE, FL_PAPER);
     draw_rule(240, FL_SET_ROW_Y0 - 10, 120, FL_PAPER);
 
     static const fl_text_id_t LABELS[FL_SET_ROW_COUNT] = {
         FL_TXT_UI_SET_MUSIC, FL_TXT_UI_SET_SOUND, FL_TXT_UI_SET_HAPTICS,
-        FL_TXT_UI_SET_LANGUAGE, FL_TXT_UI_SET_RESET,
+        FL_TXT_UI_SET_LANGUAGE, FL_TXT_UI_SET_THEME, FL_TXT_UI_SET_RESET,
     };
     for (int row = 0; row < FL_SET_ROW_COUNT; ++row) {
         int y = FL_SET_ROW_Y0 + row * FL_SET_ROW_GAP;
@@ -619,6 +617,14 @@ void screens_draw_settings(const fl_state_t *model)
             draw_button(bx, by, bw, bh,
                         fl_fmt("< %s >", fl_tr(s->lang == FL_LANG_ZH ? FL_TXT_LANG_ZH
                                                                      : FL_TXT_LANG_EN)),
+                        true, false, frame);
+            break;
+        case FL_SET_ROW_THEME:
+            fl_settings_button_rect(row, 0, &bx, &by, &bw, &bh);
+            draw_button(bx, by, bw, bh,
+                        fl_fmt("< %s >", fl_tr(s->theme == FL_THEME_NIGHT
+                                               ? FL_TXT_UI_THEME_NIGHT
+                                               : FL_TXT_UI_THEME_DAY)),
                         true, false, frame);
             break;
         case FL_SET_ROW_RESET:
@@ -737,8 +743,7 @@ void screens_draw_ending(const fl_state_t *model)
         return;
     }
     int panel_y = 292 + (int)((1.0f - rise) * 200.0f);
-    draw_panel(60, panel_y, 360, 164, false);
-    DrawRectangleLines(64, panel_y + 4, 352, 156, FL_PAPER);
+    draw_frame_panel(60, panel_y, 360, 164);
 
     int line_h = fl_text_height(FL_FONT_SMALL) + 6;
     for (int i = 0; i < FL_TXT_ENDING_COUNT; ++i) {
@@ -806,9 +811,10 @@ uint32_t frostline_view_seen_enemies(void)
     return s_banner.seen;
 }
 
-static bool is_boss(int kind)
+static bool is_boss(const fl_enemy_t *enemy)
 {
-    return kind == FL_ENEMY_WYRM || kind == FL_ENEMY_KING;
+    return enemy->champion || enemy->kind == FL_ENEMY_WYRM
+           || enemy->kind == FL_ENEMY_KING;
 }
 
 void screens_update_battle(const fl_state_t *model)
@@ -853,7 +859,7 @@ void screens_update_battle(const fl_state_t *model)
             continue;
         }
         int kind = (int)enemy->kind;
-        if (is_boss(kind)) {
+        if (is_boss(enemy)) {
             ++bosses;
             boss_kind = kind;
         }
@@ -988,8 +994,7 @@ static void draw_enemy_card(uint32_t frame)
     int y = -h + (int)((float)(h + 50) * open);
     int kind = s_banner.card_kind;
 
-    draw_panel(x, y, w, h, false);
-    DrawRectangleLines(x + 3, y + 3, w - 6, h - 6, FL_PAPER);
+    draw_frame_panel(x, y, w, h);
 
     /* The portrait: the creature walking in a paper window. */
     int bx = x + 12;

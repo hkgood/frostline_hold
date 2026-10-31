@@ -55,6 +55,7 @@ static int initialize(void *value, const char *asset_root)
         settings.sound = state->record.sound;
         settings.haptics = state->record.haptics;
         settings.lang = state->record.lang;
+        settings.theme = state->record.theme;
     }
     app_game_set_settings(state->game, &settings);
     state->seen_enemies = state->record.seen_enemies;
@@ -97,9 +98,11 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
             state->pointer_held = true;
             state->pointer_track = event->track_id;
             app_game_set_pointer(state->game, event->x, event->y, true);
+            frostline_view_set_pointer(event->x, event->y, true);
         } else if (!event->pressed && (!state->pointer_held || mine)) {
             state->pointer_held = false;
             app_game_set_pointer(state->game, event->x, event->y, false);
+            frostline_view_set_pointer(event->x, event->y, false);
         }
     } else if (event->type == RAYLIB_LITE_GAME_INPUT_CONTROL) {
         switch (event->code) {
@@ -137,7 +140,8 @@ static uint8_t music_for(const fl_state_t *model)
     case FL_PHASE_WAVE:
         for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
             const fl_enemy_t *enemy = &model->enemies[i];
-            if (enemy->alive && (enemy->behaviour == FL_BEHAVIOUR_WYRM
+            if (enemy->alive && (enemy->champion
+                                 || enemy->behaviour == FL_BEHAVIOUR_WYRM
                                  || enemy->behaviour == FL_BEHAVIOUR_KING)) {
                 return FL_MUSIC_BOSS;
             }
@@ -159,6 +163,7 @@ static void sync_record(host_state_t *state, const fl_state_t *model)
         state->record.sound = model->settings.sound;
         state->record.haptics = model->settings.haptics;
         state->record.lang = model->settings.lang;
+        state->record.theme = model->settings.theme;
         state->record.has_settings = 1;
         frostline_audio_configure(&state->audio, model->settings.music,
                                   model->settings.sound,
@@ -221,6 +226,42 @@ static void update(void *value)
     }
 }
 
+static uint16_t rgb565(Color c)
+{
+    return (uint16_t)(((c.r & 0xF8u) << 8) | ((c.g & 0xFCu) << 3) | (c.b >> 3));
+}
+
+/* Night: every pixel on screen is ink or paper, sprites included, so one
+ * XOR with the difference of the two swaps them exactly. */
+static void invert_frame(void)
+{
+    int width = 0, height = 0;
+    size_t stride = 0;
+    uint16_t *pixels = raylib_lite_raylib_get_framebuffer(&width, &height, &stride);
+    if (!pixels) {
+        return;
+    }
+    const uint16_t swap = rgb565(FL_INK) ^ rgb565(FL_PAPER);
+    const uint32_t swap2 = (uint32_t)swap | ((uint32_t)swap << 16);
+    for (int y = 0; y < height; ++y) {
+        uint16_t *row = pixels + (size_t)y * stride;
+        int x = 0;
+        /* Two pixels per word where the row is word aligned. */
+        if (((uintptr_t)row & 2u) != 0 && width > 0) {
+            row[0] ^= swap;
+            x = 1;
+        }
+        uint32_t *pairs = (uint32_t *)(void *)(row + x);
+        int count = (width - x) / 2;
+        for (int i = 0; i < count; ++i) {
+            pairs[i] ^= swap2;
+        }
+        for (x += count * 2; x < width; ++x) {
+            row[x] ^= swap;
+        }
+    }
+}
+
 static int render(void *value)
 {
     if (!((host_state_t *)value)->game) {
@@ -236,6 +277,9 @@ static int render(void *value)
     fl_state_t model;
     app_game_get_model(state->game, &model);
     frostline_view_draw(&model);
+    if (model.settings.theme == FL_THEME_NIGHT) {
+        invert_frame();
+    }
     EndDrawing();
     return 0;
 }

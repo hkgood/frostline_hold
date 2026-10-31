@@ -18,13 +18,59 @@ class LevelDataTest(unittest.TestCase):
     def test_keys_are_unique_and_fit_the_record(self):
         keys = [level["key"] for level in campaign.LEVELS]
         self.assertEqual(len(keys), len(set(keys)))
-        # The progress record and the map both have eight slots.
+        # The progress record has 24 slots (FROSTLINE_RECORD_LEVELS).
         self.assertLessEqual(len(campaign.LEVELS), len(campaign.CAMPAIGN_NODES))
-        self.assertLessEqual(len(campaign.LEVELS), 8)
+        self.assertLessEqual(len(campaign.LEVELS), 24)
+
+    def test_every_chapter_opens_and_interludes_follow_it(self):
+        stage = -1
+        for level in campaign.LEVELS:
+            with self.subTest(level=level["key"]):
+                if level["interlude"]:
+                    self.assertEqual(level["stage"], stage)
+                else:
+                    self.assertEqual(level["stage"], stage + 1)
+                    stage = level["stage"]
+        self.assertEqual(stage + 1, len(campaign.CHAPTERS))
 
     def test_every_level_sits_on_its_own_campaign_node(self):
+        width = campaign.CAMPAIGN_WIDTH
         for index, level in enumerate(campaign.LEVELS):
-            self.assertEqual(tuple(level["node"]), campaign.CAMPAIGN_NODES[index])
+            with self.subTest(level=level["key"]):
+                x, y = level["node"]
+                self.assertEqual((x, y), campaign.CAMPAIGN_NODES[index])
+                # On the scroll, clear of the back button and the level card.
+                self.assertTrue(30 <= x <= width - 30)
+                self.assertTrue(40 <= y <= 340)
+                for other in campaign.LEVELS[:index]:
+                    self.assertGreaterEqual(math.dist(level["node"], other["node"]), 44)
+
+    def test_interludes_bring_nothing_new_and_no_boss(self):
+        seen = set()
+        towers = ()
+        for level in campaign.LEVELS:
+            kinds = {batch[0] for wave in level["waves"] for batch in wave["batches"]}
+            with self.subTest(level=level["key"]):
+                if level["interlude"]:
+                    self.assertLessEqual(kinds, seen)
+                    self.assertEqual(tuple(level["towers"]), tuple(towers))
+                    self.assertNotIn(geom.ENEMY_WYRM, kinds)
+                    self.assertNotIn(geom.ENEMY_KING, kinds)
+                    self.assertNotIn(geom.ENEMY_TITAN, kinds)
+                    for wave in level["waves"]:
+                        for batch in wave["batches"]:
+                            self.assertFalse(batch[3] & geom.CHAMPION)
+                else:
+                    towers = level["towers"]
+            seen |= kinds
+
+    def test_every_chapter_opening_has_a_boss(self):
+        bosses = (geom.ENEMY_WYRM, geom.ENEMY_KING)
+        for level in campaign.CHAPTERS:
+            with self.subTest(level=level["key"]):
+                batches = [b for w in level["waves"] for b in w["batches"]]
+                self.assertTrue(any(b[0] in bosses or b[3] & geom.CHAMPION
+                                    for b in batches))
 
     def test_every_road_ends_at_the_shared_gate_from_the_left(self):
         for level in campaign.LEVELS:
@@ -84,8 +130,9 @@ class LevelDataTest(unittest.TestCase):
                     for kind, count, interval, lane in wave["batches"]:
                         self.assertLess(kind, len(geom.ENEMY_STATS))
                         self.assertTrue(0 < count < 256 and 0 < interval < 256)
+                        self.assertEqual(lane & ~(geom.LANE_B | geom.CHAMPION), 0)
                         if not level["lane_b"]:
-                            self.assertEqual(lane, geom.LANE_A)
+                            self.assertEqual(lane & geom.LANE_B, geom.LANE_A)
 
     def test_every_level_has_its_plate_and_offers_a_tower(self):
         for level in campaign.LEVELS:
@@ -93,7 +140,15 @@ class LevelDataTest(unittest.TestCase):
                 self.assertTrue((AI_DIR / level["plate"]).exists())
                 self.assertIn(level["art"], ("engraving", "carve"))
                 self.assertNotEqual(campaign.tower_mask(level), 0)
-        self.assertTrue((AI_DIR / campaign.CAMPAIGN_PLATE).exists())
+        for plate in campaign.CAMPAIGN_PLATES:
+            self.assertTrue((AI_DIR / plate).exists())
+        self.assertEqual(campaign.CAMPAIGN_WIDTH, 480 * len(campaign.CAMPAIGN_PLATES))
+
+    def test_the_baked_terrain_is_up_to_date(self):
+        from artgen import generate_terrain
+        self.assertEqual(generate_terrain.recorded_hash(generate_terrain.target_path()),
+                         generate_terrain.inputs_hash(),
+                         "run python3 assets_src/artgen/generate_terrain.py")
 
 
 if __name__ == "__main__":

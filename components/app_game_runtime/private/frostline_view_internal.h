@@ -2,6 +2,7 @@
  * and the entry points of the effect, scenery and screen modules.
  *
  *   frostline_view.c      the battlefield, the HUD and the campaign map
+ *   frostline_towers.c    the towers, their moving parts and charges
  *   frostline_fx.c        hits, shots, blasts, deaths and screen shake
  *   frostline_scenery.c   the living details of each map
  *   frostline_screens.c   title, settings, ending, banners and cards
@@ -48,10 +49,6 @@
 #define EMBER_FLAME_FRAMES 4
 #define SPARK_FRAMES 6
 
-/* Tower sprites are "tower_<key>_<variant>": level 1, level 2, then the two
- * level 3 branches. */
-#define TOWER_VARIANTS 4
-
 /* The crow's body sits this far down its cell (CROW_BODY_Y in sprites.py),
  * so the view can hang it exactly where the model aims at it. */
 #define CROW_BODY_Y 22
@@ -71,7 +68,7 @@ typedef struct {
 #define BUTTON_TEXT_HEIGHT 14
 
 typedef struct {
-    raylib_lite_atlas_t terrain;
+    bool terrain;      /* the terrain buffer is allocated */
     raylib_lite_atlas_t units;
     raylib_lite_atlas_t heroes;
     raylib_lite_atlas_t props;
@@ -81,11 +78,8 @@ typedef struct {
     raylib_lite_atlas_t icons;
     raylib_lite_atlas_t castle_fx;
     raylib_lite_atlas_t title;
-    raylib_lite_asset_id_t maps[FL_LEVEL_COUNT];   /* "map_<key>" per level */
-    raylib_lite_asset_id_t campaign_map;
-    raylib_lite_asset_id_t nodes[FL_MAX_LEVELS];   /* medallion per stage */
+    raylib_lite_asset_id_t nodes[FL_STAGE_COUNT];  /* medallion per chapter */
     raylib_lite_asset_id_t node_locked;
-    raylib_lite_asset_id_t towers[FL_TOWER_KIND_COUNT][TOWER_VARIANTS];
     raylib_lite_asset_id_t enemies[FL_ENEMY_KIND_COUNT][ENEMY_FRAMES];
     raylib_lite_asset_id_t enemies_alt[FL_ENEMY_KIND_COUNT][ENEMY_FRAMES];
     raylib_lite_asset_id_t pads[2];
@@ -113,6 +107,14 @@ typedef struct {
 
 extern view_assets_t fv_assets;
 
+/* --- terrain (frostline_terrain.c) ------------------------------------ */
+/* The 1-bit terrain is expanded into one buffer, the map on screen. */
+bool fl_terrain_init(void);
+void fl_terrain_shutdown(void);
+void fl_terrain_draw_level(int level);
+/* The campaign scroll, from scroll px into it. */
+void fl_terrain_draw_campaign(int scroll);
+
 /* --- drawing helpers (frostline_view.c) ------------------------------- */
 void draw_padded(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                  float x, float y, float size);
@@ -123,6 +125,25 @@ void draw_full(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
 bool draw_native(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                  float x, float y);
 void draw_panel(int x, int y, int w, int h, bool inverted);
+/* Buttons are chiselled stone plates: cut corners, an engraved line inside
+ * the rim and the stone's thickness showing under the face. A plate keeps to
+ * its rectangle; the thickness takes its bottom rows. */
+#define PLATE_CUT 5
+#define PLATE_DEPTH 3
+typedef enum {
+    PLATE_PLAIN,   /* paper face, one engraved line */
+    PLATE_GRAND,   /* paper face, two lines: the main action of a screen */
+    PLATE_DARK,    /* ink face with a paper rim, for the ink HUD bar */
+    PLATE_OFF,     /* not on offer: the outline only */
+} plate_style_t;
+/* Draw a plate; the face it leaves for the label comes back in face_y and
+ * face_h. Returns true while a finger holds it down. */
+bool draw_plate(int x, int y, int w, int h, plate_style_t style, int *face_y,
+                int *face_h);
+void fill_plate(int x, int y, int w, int h, int cut, Color color);
+void outline_plate(int x, int y, int w, int h, int cut, Color color);
+/* A dialog: an ink tablet framed by two cut-corner paper lines. */
+void draw_frame_panel(int x, int y, int w, int h);
 bool corner_cut(int x, int y);
 uint32_t jag_hash(uint32_t a);
 void draw_dotted_circle(int cx, int cy, int radius, int march);
@@ -132,6 +153,9 @@ void draw_ground_shadow(int cx, int cy, int rx, int ry);
  * not on offer; `beckon` breathes a second frame round it. */
 void draw_button(int x, int y, int w, int h, const char *label,
                  bool enabled, bool beckon, uint32_t tick);
+/* The same, with a play triangle leading the label when asked. */
+void draw_icon_button(int x, int y, int w, int h, const char *label,
+                      bool play_icon, bool enabled, bool beckon, uint32_t tick);
 const fl_level_t *current_level(const fl_state_t *model);
 /* Names in the current language. */
 const char *level_name(uint8_t level);
@@ -147,6 +171,14 @@ void draw_dither_ellipse(int cx, int cy, int rx, int ry, float density,
                          Color color);
 /* A faceted five-point star; `filled` false draws only the outline. */
 void draw_star(int cx, int cy, int r, bool filled);
+
+/* --- towers (frostline_towers.c) -------------------------------------- */
+/* Names every tower frame and loads the sheet of moving parts. */
+void towers_init(void);
+void towers_shutdown(void);
+bool towers_ready(void);
+/* One tower, its parts and its tells, standing on its map position. */
+void towers_draw(const fl_state_t *model, int index);
 
 /* --- effects (frostline_fx.c) ----------------------------------------- */
 /* Compare the model with the last frame and start the effects it implies. */
@@ -167,6 +199,11 @@ void fx_shake(int strength, int ticks);
 void fx_enemy_jolt(int index, int *dx, int *dy);
 /* Forget everything: a new level or a screen change. */
 void fx_reset(void);
+/* A catapult stone, in the bucket or in flight. */
+void fx_draw_boulder(float x, float y, float r, uint32_t tick, bool burning,
+                     bool banded);
+/* A plus-shaped glint: ink case, paper core, arms r long. */
+void draw_glint(int x, int y, int r);
 
 /* --- scenery (frostline_scenery.c) ------------------------------------ */
 /* The map's own life under the actors: water, mist, critters... */
