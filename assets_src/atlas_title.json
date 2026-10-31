@@ -1,0 +1,17 @@
+{
+  "image": "title_atlas_source.png",
+  "columns": 2,
+  "rows": 1,
+  "output_cell": 480,
+  "output_columns": 2,
+  "alpha_mode": "opaque",
+  "frames": [
+    {
+      "name": "title_backdrop"
+    },
+    {
+      "name": "ending_backdrop"
+    }
+  ],
+  "animations": []
+}

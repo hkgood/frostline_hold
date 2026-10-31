@@ -41,13 +41,16 @@ app_game_err_t app_game_create(const app_game_config_t *config, app_game_handle_
  * NULL pointer/handle is a no-op. */
 void app_game_destroy(app_game_handle_t *handle);
 
-/** Reset input, tick and pause state to zero and return to the campaign map;
- * keep viewport and campaign progress. NULL is a no-op. */
+/** Reset input, tick and pause state to zero and return to the title;
+ * keep viewport, campaign progress and settings. NULL is a no-op. */
 void app_game_reset(app_game_handle_t handle);
 /** Load campaign progress, one entry per level up to FL_MAX_LEVELS: the
  * stars earned (0 = not cleared) and the best score. NULL is a no-op. */
 void app_game_set_progress(app_game_handle_t handle, const uint8_t *stars,
                            const uint32_t *best, int count);
+/** Load stored settings (values are clamped); this does not count as a
+ * change by the player. NULL is a no-op. */
+void app_game_set_settings(app_game_handle_t handle, const fl_settings_t *settings);
 /** Change pause state. NULL is a no-op. Pausing stops ticks, not input recording. */
 void app_game_set_paused(app_game_handle_t handle, bool paused);
 /** Set pointer coordinates in pixels (clamped to viewport) and button state.

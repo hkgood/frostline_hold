@@ -1,10 +1,11 @@
 {
   "events": [
-    {"frame": 2, "type": "tap", "x": 360, "y": 400},
-    {"frame": 12, "type": "tap", "x": 58, "y": 108},
-    {"frame": 15, "type": "tap", "x": 76, "y": 66},
-    {"frame": 18, "type": "tap", "x": 76, "y": 66},
-    {"frame": 20, "type": "tap", "x": 58, "y": 108},
-    {"frame": 26, "type": "tap", "x": 100, "y": 440}
+    {"frame": 2, "type": "tap", "x": 240, "y": 390},
+    {"frame": 6, "type": "tap", "x": 360, "y": 400},
+    {"frame": 16, "type": "tap", "x": 58, "y": 108},
+    {"frame": 19, "type": "tap", "x": 76, "y": 66},
+    {"frame": 22, "type": "tap", "x": 76, "y": 66},
+    {"frame": 24, "type": "tap", "x": 58, "y": 108},
+    {"frame": 30, "type": "tap", "x": 100, "y": 440}
   ]
 }

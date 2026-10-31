@@ -13,6 +13,8 @@ The rules that shaped these recipes:
 * the field is busy, so the shot sounds are short and quiet, and the sounds
   that carry meaning (a leak, a wave, the end of a run) are the loud ones.
 """
+import math
+
 from . import audio
 
 RATE = audio.RATE
@@ -424,6 +426,133 @@ def music_battle():
 
 
 # --------------------------------------------------------------------- #
+# The title theme
+# --------------------------------------------------------------------- #
+TITLE_BPM = 64.0
+TITLE_BEAT = 60.0 / TITLE_BPM
+TITLE_BARS = 8
+
+# A slow chime line over a held chord: (beat, length, note).
+_TITLE_MELODY = (
+    (0.0, 2.0, "D5"), (2.0, 1.0, "F5"), (3.0, 1.0, "E5"),
+    (4.0, 3.0, "A4"), (7.0, 1.0, "C5"),
+    (8.0, 2.0, "D5"), (10.0, 1.0, "E5"), (11.0, 1.0, "F5"),
+    (12.0, 4.0, "E5"),
+    (16.0, 2.0, "F5"), (18.0, 1.0, "G5"), (19.0, 1.0, "F5"),
+    (20.0, 3.0, "D5"), (23.0, 1.0, "C5"),
+    (24.0, 2.0, "A4"), (26.0, 2.0, "C5"),
+    (28.0, 4.0, "D5"),
+)
+
+# One chord per two bars: the roots of i - VI - III - VII in D minor.
+_TITLE_CHORDS = (("D3", "A3", "F4"), ("A#2", "F3", "D4"),
+                 ("F3", "C4", "A4"), ("C3", "G3", "E4"))
+
+
+def _pad(freq, duration, amp):
+    """A soft held voice: two detuned sines swelling in and out."""
+    return audio.mixed(duration, [
+        audio.tone(freq, freq, duration, "sine", amp, attack=duration * 0.3,
+                   decay=duration * 1.2, vibrato=0.003, vibrato_rate=0.7),
+        audio.tone(freq * 1.003, freq * 1.003, duration, "triangle", amp * 0.3,
+                   attack=duration * 0.4, decay=duration * 1.1),
+    ])
+
+
+def music_title():
+    """The theme of the title and the campaign map: cold, wide and slow.
+
+    Chimes like icicles struck in the wind over a pad of held chords, with
+    a gust of filtered noise rising and falling once every two bars.
+    """
+    total = TITLE_BARS * 4 * TITLE_BEAT
+    buffer = audio.Buffer(total + 0.6)
+    span = 8 * TITLE_BEAT
+    for index, chord in enumerate(_TITLE_CHORDS):
+        start = index * span
+        for name in chord:
+            buffer.add(_pad(audio.note_frequency(name), span * 1.02, 0.16), start)
+        # The wind: noise through a band that sweeps up and back.
+        count = int(span * RATE)
+        gust = audio.noise(span, 0.10, attack=span * 0.45, decay=span * 0.5,
+                           seed=101 + index)
+        cutoff = [700.0 + 900.0 * math.sin(math.pi * i / count) for i in range(count)]
+        buffer.add(audio.svf(gust, cutoff, 1.6, "band"), start)
+    for beat, length, name in _TITLE_MELODY:
+        duration = length * TITLE_BEAT
+        freq = audio.note_frequency(name)
+        buffer.add(_bell(freq, min(duration, 2.6), 0.42, decay=duration * 0.55),
+                   beat * TITLE_BEAT)
+        # A faint echo a beat later, an octave up, like a far bell.
+        buffer.add(_bell(freq * 2.0, 1.2, 0.08, decay=0.5),
+                   beat * TITLE_BEAT + TITLE_BEAT * 0.75)
+    return buffer
+
+
+# --------------------------------------------------------------------- #
+# The boss theme
+# --------------------------------------------------------------------- #
+BOSS_BPM = 126.0
+BOSS_BEAT = 60.0 / BOSS_BPM
+BOSS_BARS = 8
+
+# Phrygian menace: the flat second leans on the root.
+_BOSS_RIFF = ("D3", "D3", "D#3", "D3", "D3", "A2", "C3", "D#3")
+_BOSS_MELODY = (
+    (0.0, 2.0, "D5"), (2.0, 1.0, "D#5"), (3.0, 1.0, "D5"),
+    (4.0, 2.0, "A4"), (6.0, 2.0, "C5"),
+    (8.0, 1.5, "D5"), (9.5, 0.5, "F5"), (10.0, 2.0, "D#5"),
+    (12.0, 4.0, "D5"),
+    (16.0, 2.0, "F5"), (18.0, 1.0, "D#5"), (19.0, 1.0, "D5"),
+    (20.0, 2.0, "C5"), (22.0, 2.0, "A4"),
+    (24.0, 1.0, "D5"), (25.0, 1.0, "D#5"), (26.0, 1.0, "F5"), (27.0, 1.0, "G5"),
+    (28.0, 4.0, "A5"),
+)
+
+
+def _war_drum(amp=1.0):
+    """A big low drum with a cracking head."""
+    body = audio.tone(96.0, 52.0, 0.26, "sine", amp, decay=0.08)
+    head = audio.svf(audio.noise(0.08, 0.55 * amp, decay=0.022, seed=7), 1600.0,
+                     1.0, "band")
+    return audio.mixed(0.26, [body, head])
+
+
+def music_boss():
+    """The theme while a boss walks the road: a driving riff and war drums.
+
+    Eighth notes of a bowed low riff, drums on every beat with a double hit
+    closing each bar, and the folk voice of the battle theme raised into a
+    tense, flattened melody.
+    """
+    total = BOSS_BARS * 4 * BOSS_BEAT
+    buffer = audio.Buffer(total + 0.4)
+    eighth = BOSS_BEAT / 2.0
+    steps = BOSS_BARS * 8
+    for step in range(steps):
+        name = _BOSS_RIFF[step % len(_BOSS_RIFF)]
+        freq = audio.note_frequency(name)
+        accent = 1.0 if step % 4 == 0 else 0.7
+        buffer.add(audio.tone(freq, freq, eighth * 0.92, "saw", 0.20 * accent,
+                              attack=0.004, decay=eighth * 0.5), step * eighth)
+        buffer.add(audio.tone(freq * 0.5, freq * 0.5, eighth * 0.92, "sine",
+                              0.30 * accent, attack=0.004, decay=eighth * 0.6),
+                   step * eighth)
+    for beat, length, name in _BOSS_MELODY:
+        duration = length * BOSS_BEAT * 0.96
+        buffer.add(_hurdy(audio.note_frequency(name), duration), beat * BOSS_BEAT)
+    for bar in range(BOSS_BARS):
+        base = bar * 4 * BOSS_BEAT
+        for beat in range(4):
+            buffer.add(_war_drum(0.75 if beat % 2 == 0 else 0.5),
+                       base + beat * BOSS_BEAT)
+        buffer.add(_war_drum(0.45), base + 3.5 * BOSS_BEAT)
+        buffer.add(_click(3000.0, 0.22, 0.005), base + 1.5 * BOSS_BEAT)
+        buffer.add(_click(3000.0, 0.22, 0.005), base + 2.5 * BOSS_BEAT)
+    return buffer
+
+
+# --------------------------------------------------------------------- #
 # The catalogue
 # --------------------------------------------------------------------- #
 CATALOGUE = {
@@ -455,4 +584,6 @@ CATALOGUE = {
     "win": win,
     "lose": lose,
     "music_battle": music_battle,
+    "music_title": music_title,
+    "music_boss": music_boss,
 }

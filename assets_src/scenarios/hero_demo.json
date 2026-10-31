@@ -1,11 +1,12 @@
 {
   "events": [
-    {"frame": 2, "type": "tap", "x": 360, "y": 400},
-    {"frame": 12, "type": "tap", "x": 56, "y": 232},
-    {"frame": 15, "type": "tap", "x": 76, "y": 182},
-    {"frame": 18, "type": "tap", "x": 76, "y": 182},
-    {"frame": 710, "type": "tap", "x": 422, "y": 22},
-    {"frame": 720, "type": "tap", "x": 422, "y": 22},
-    {"frame": 810, "type": "tap", "x": 58, "y": 22}
+    {"frame": 2, "type": "tap", "x": 240, "y": 390},
+    {"frame": 6, "type": "tap", "x": 360, "y": 400},
+    {"frame": 16, "type": "tap", "x": 56, "y": 232},
+    {"frame": 19, "type": "tap", "x": 76, "y": 182},
+    {"frame": 22, "type": "tap", "x": 76, "y": 182},
+    {"frame": 714, "type": "tap", "x": 422, "y": 22},
+    {"frame": 724, "type": "tap", "x": 422, "y": 22},
+    {"frame": 814, "type": "tap", "x": 58, "y": 22}
   ]
 }

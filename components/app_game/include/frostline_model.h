@@ -101,6 +101,49 @@ extern "C" {
 #define FL_PANEL_BTN_H 40
 #define FL_PANEL_BTN_GAP 12
 
+/* The title screen's two buttons, stacked under the logo. */
+#define FL_TITLE_BTN_X 150
+#define FL_TITLE_BTN_W 180
+#define FL_TITLE_BTN_H 44
+#define FL_TITLE_START_Y 368
+#define FL_TITLE_SETTINGS_Y 420
+
+/* The campaign map's way back to the title, in the open sky top right. */
+#define FL_MENU_BACK_X 352
+#define FL_MENU_BACK_Y 62
+#define FL_MENU_BACK_W 80
+#define FL_MENU_BACK_H 34
+
+/* The settings screen: one row per setting, the back button below. A
+ * volume row has a minus and a plus button round its level bar; the other
+ * rows have one wide button. */
+#define FL_SET_ROW_Y0 104
+#define FL_SET_ROW_GAP 56
+#define FL_SET_ROW_H 40
+#define FL_SET_LABEL_X 64
+#define FL_SET_MINUS_X 236
+#define FL_SET_PLUS_X 376
+#define FL_SET_STEP_W 44
+#define FL_SET_WIDE_X 236
+#define FL_SET_WIDE_W 184
+#define FL_SET_BACK_X 180
+#define FL_SET_BACK_Y 396
+#define FL_SET_BACK_W 120
+#define FL_SET_BACK_H 40
+#define FL_VOLUME_MAX 4
+
+typedef enum {
+    FL_SET_ROW_MUSIC = 0,
+    FL_SET_ROW_SOUND,
+    FL_SET_ROW_HAPTICS,
+    FL_SET_ROW_LANGUAGE,
+    FL_SET_ROW_RESET,
+    FL_SET_ROW_COUNT,
+} fl_settings_row_t;
+
+/* The ending screen ignores taps until the story has had time to show. */
+#define FL_ENDING_MIN_TICKS 90
+
 typedef enum {
     FL_PANEL_BTN_MAP = 0,
     FL_PANEL_BTN_RETRY = 1,
@@ -165,7 +208,19 @@ typedef enum {
     FL_PHASE_WON = 2,
     FL_PHASE_LOST = 3,
     FL_PHASE_MENU = 4,   /* the campaign map: pick a level */
+    FL_PHASE_TITLE = 5,  /* the title screen the game boots into */
+    FL_PHASE_SETTINGS = 6,
+    FL_PHASE_ENDING = 7, /* after the last level is won */
 } fl_phase_t;
+
+/* What the player set on the settings screen. The model only keeps the
+ * values; the runtime stores them and applies them to sound and haptics. */
+typedef struct {
+    uint8_t music;    /* 0..FL_VOLUME_MAX */
+    uint8_t sound;    /* 0..FL_VOLUME_MAX */
+    uint8_t haptics;  /* 0 or 1 */
+    uint8_t lang;     /* 0 = Chinese, 1 = English */
+} fl_settings_t;
 
 typedef struct {
     int16_t x, y;
@@ -315,6 +370,14 @@ typedef struct {
     uint32_t events;
     uint32_t event_serial;   /* counts the updates that raised anything */
     uint8_t last_kill_kind;  /* which enemy died last, for the kill sound */
+    /* Settings outlive runs like the progress does. The serial counts
+     * changes so the runtime knows when to store and apply them; the reset
+     * serial counts progress wipes. */
+    fl_settings_t settings;
+    uint16_t settings_serial;
+    uint16_t reset_serial;
+    uint8_t reset_armed;     /* the first tap on "reset" asks again */
+    uint16_t screen_ticks;   /* ticks spent on the title, map or ending */
     fl_hero_t heroes[FL_MAX_HEROES];
     uint8_t batch_index;   /* index into the current wave's batch list */
     uint8_t batch_spawned; /* enemies already spawned from that batch */
@@ -338,6 +401,13 @@ void fl_state_reset(fl_state_t *state, uint32_t seed);
 bool fl_state_start_level(fl_state_t *state, uint8_t level);
 /** Leave the battle for the campaign map, keeping the progress. */
 void fl_state_open_menu(fl_state_t *state);
+/** Show the title screen, keeping the progress. */
+void fl_state_open_title(fl_state_t *state);
+/** The defaults: full sound, haptics on, Chinese. */
+fl_settings_t fl_default_settings(void);
+/** Where a settings row's buttons sit: `part` 0 is the minus (or the wide
+ * button), 1 the plus. Returns false when the row has no such part. */
+bool fl_settings_button_rect(int row, int part, int *x, int *y, int *w, int *h);
 /** A level is open once the one before it has been cleared. */
 bool fl_level_unlocked(const fl_state_t *state, uint8_t level);
 /** How many levels the campaign has. */

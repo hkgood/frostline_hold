@@ -1,6 +1,6 @@
 {
   "schema": "mosaico-game-assets/v1",
-  "limit_bytes": 8388608,
+  "limit_bytes": 12582912,
   "atlases": [
     {
       "config": "atlas_terrain.json",
@@ -46,6 +46,11 @@
       "config": "atlas_castle_fx.json",
       "source": "castle_fx_atlas_source.png",
       "output": "castle_fx.atlas"
+    },
+    {
+      "config": "atlas_title.json",
+      "source": "title_atlas_source.png",
+      "output": "title.atlas"
     }
   ],
   "maps": [],
@@ -133,6 +138,12 @@
     },
     {
       "source": "music_battle.wav"
+    },
+    {
+      "source": "music_title.wav"
+    },
+    {
+      "source": "music_boss.wav"
     }
   ]
 }

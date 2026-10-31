@@ -1578,6 +1578,13 @@ static void fl_update_wave_state(fl_state_t *state)
 static void fl_step(fl_state_t *state)
 {
     state->tick++;
+    if (state->phase >= FL_PHASE_MENU) {
+        /* The screens outside battle only keep time for their animations. */
+        if (state->screen_ticks < UINT16_MAX) {
+            state->screen_ticks++;
+        }
+        return;
+    }
     if (state->phase == FL_PHASE_PREP) {
         /* Between waves the garrisons still walk out and the last fires
          * and bolts still fade. */
@@ -1781,6 +1788,9 @@ static void fl_begin_level(fl_state_t *state, uint8_t level)
     uint16_t serial = state->run_serial;
     uint32_t events = state->events;
     uint32_t event_serial = state->event_serial;
+    fl_settings_t settings = state->settings;
+    uint16_t settings_serial = state->settings_serial;
+    uint16_t reset_serial = state->reset_serial;
     memset(state, 0, sizeof(*state));
     memcpy(state->level_best, best, sizeof(best));
     memcpy(state->level_stars, stars, sizeof(stars));
@@ -1788,6 +1798,9 @@ static void fl_begin_level(fl_state_t *state, uint8_t level)
     state->run_serial = (uint16_t)(serial + 1u);
     state->events = events;
     state->event_serial = event_serial;
+    state->settings = settings;
+    state->settings_serial = settings_serial;
+    state->reset_serial = reset_serial;
 
     const fl_level_t *data = &FL_LEVELS[level];
     state->level = level;
@@ -1809,8 +1822,25 @@ void fl_state_reset(fl_state_t *state, uint32_t seed)
 {
     memset(state, 0, sizeof(*state));
     state->seed = seed ? seed : 0x464C5354u;
+    state->settings = fl_default_settings();
     fl_begin_level(state, 0);
     (void)fl_rand(state);
+}
+
+fl_settings_t fl_default_settings(void)
+{
+    return (fl_settings_t) {
+        .music = FL_VOLUME_MAX,
+        .sound = FL_VOLUME_MAX,
+        .haptics = 1,
+        .lang = 0,
+    };
+}
+
+void fl_state_open_title(fl_state_t *state)
+{
+    fl_begin_level(state, state->level);
+    state->phase = FL_PHASE_TITLE;
 }
 
 uint8_t fl_level_count(void)
@@ -2108,6 +2138,11 @@ static void fl_menu_tap(fl_state_t *state, int32_t x, int32_t y)
         fl_state_start_level(state, state->menu_level);
         return;
     }
+    if (fl_inside(x, y, FL_MENU_BACK_X, FL_MENU_BACK_Y, FL_MENU_BACK_W,
+                  FL_MENU_BACK_H)) {
+        fl_state_open_title(state);
+        return;
+    }
     for (uint8_t i = 0; i < FL_LEVEL_COUNT; ++i) {
         float dx = (float)(x - FL_LEVELS[i].node.x);
         float dy = (float)(y - FL_LEVELS[i].node.y);
@@ -2130,13 +2165,141 @@ static void fl_end_tap(fl_state_t *state, int32_t x, int32_t y)
         fl_state_start_level(state, state->level);
         break;
     case FL_PANEL_BTN_NEXT:
-        /* Only a won run offers the next level, and only if there is one. */
+        /* Only a won run offers the next level; after the last one the
+         * button leads to the ending instead. */
         if (state->phase == FL_PHASE_WON) {
-            fl_state_start_level(state, (uint8_t)(state->level + 1));
+            if (state->level + 1 < FL_LEVEL_COUNT) {
+                fl_state_start_level(state, (uint8_t)(state->level + 1));
+            } else {
+                state->phase = FL_PHASE_ENDING;
+                state->screen_ticks = 0;
+            }
         }
         break;
     default:
         break;
+    }
+}
+
+/* The title: start leads to the campaign map, settings to its screen. */
+static void fl_title_tap(fl_state_t *state, int32_t x, int32_t y)
+{
+    if (fl_inside(x, y, FL_TITLE_BTN_X, FL_TITLE_START_Y, FL_TITLE_BTN_W,
+                  FL_TITLE_BTN_H)) {
+        fl_state_open_menu(state);
+    } else if (fl_inside(x, y, FL_TITLE_BTN_X, FL_TITLE_SETTINGS_Y,
+                         FL_TITLE_BTN_W, FL_TITLE_BTN_H)) {
+        state->phase = FL_PHASE_SETTINGS;
+        state->screen_ticks = 0;
+        state->reset_armed = 0;
+    }
+}
+
+bool fl_settings_button_rect(int row, int part, int *x, int *y, int *w, int *h)
+{
+    if (row < 0 || row >= FL_SET_ROW_COUNT || part < 0 || part > 1) {
+        return false;
+    }
+    bool volume = row == FL_SET_ROW_MUSIC || row == FL_SET_ROW_SOUND;
+    if (!volume && part == 1) {
+        return false;
+    }
+    *y = FL_SET_ROW_Y0 + row * FL_SET_ROW_GAP;
+    *h = FL_SET_ROW_H;
+    if (volume) {
+        *x = part == 0 ? FL_SET_MINUS_X : FL_SET_PLUS_X;
+        *w = FL_SET_STEP_W;
+    } else if (row == FL_SET_ROW_RESET) {
+        /* Reset has no separate label: its button spans the whole row. */
+        *x = FL_SET_LABEL_X;
+        *w = FL_SET_WIDE_X + FL_SET_WIDE_W - FL_SET_LABEL_X;
+    } else {
+        *x = FL_SET_WIDE_X;
+        *w = FL_SET_WIDE_W;
+    }
+    return true;
+}
+
+static void fl_settings_changed(fl_state_t *state)
+{
+    state->settings_serial++;
+}
+
+/* Wipe the campaign: every level locked again, every best score gone. */
+static void fl_reset_progress(fl_state_t *state)
+{
+    memset(state->level_best, 0, sizeof(state->level_best));
+    memset(state->level_stars, 0, sizeof(state->level_stars));
+    state->level = 0;
+    state->menu_level = 0;
+    state->reset_serial++;
+}
+
+static void fl_settings_tap(fl_state_t *state, int32_t x, int32_t y)
+{
+    if (fl_inside(x, y, FL_SET_BACK_X, FL_SET_BACK_Y, FL_SET_BACK_W,
+                  FL_SET_BACK_H)) {
+        state->phase = FL_PHASE_TITLE;
+        state->screen_ticks = 0;
+        state->reset_armed = 0;
+        return;
+    }
+    fl_settings_t *s = &state->settings;
+    for (int row = 0; row < FL_SET_ROW_COUNT; ++row) {
+        for (int part = 0; part < 2; ++part) {
+            int bx, by, bw, bh;
+            if (!fl_settings_button_rect(row, part, &bx, &by, &bw, &bh)
+                    || !fl_inside(x, y, bx, by, bw, bh)) {
+                continue;
+            }
+            /* Any button but "reset" calms an armed reset down again. */
+            if (row != FL_SET_ROW_RESET) {
+                state->reset_armed = 0;
+            }
+            switch (row) {
+            case FL_SET_ROW_MUSIC:
+            case FL_SET_ROW_SOUND: {
+                uint8_t *level = row == FL_SET_ROW_MUSIC ? &s->music : &s->sound;
+                if (part == 0 && *level > 0) {
+                    (*level)--;
+                } else if (part == 1 && *level < FL_VOLUME_MAX) {
+                    (*level)++;
+                }
+                fl_settings_changed(state);
+                break;
+            }
+            case FL_SET_ROW_HAPTICS:
+                s->haptics = s->haptics ? 0 : 1;
+                fl_settings_changed(state);
+                break;
+            case FL_SET_ROW_LANGUAGE:
+                s->lang = s->lang ? 0 : 1;
+                fl_settings_changed(state);
+                break;
+            case FL_SET_ROW_RESET:
+                if (state->reset_armed == 1) {
+                    fl_reset_progress(state);
+                    state->reset_armed = 2;   /* "progress erased" */
+                } else if (state->reset_armed == 0) {
+                    state->reset_armed = 1;
+                }
+                break;
+            default:
+                break;
+            }
+            return;
+        }
+    }
+    if (state->reset_armed == 1) {
+        state->reset_armed = 0;
+    }
+}
+
+/* The ending rolls for a while, then any tap goes back to the map. */
+static void fl_ending_tap(fl_state_t *state)
+{
+    if (state->screen_ticks >= FL_ENDING_MIN_TICKS) {
+        fl_state_open_menu(state);
     }
 }
 
@@ -2342,6 +2505,18 @@ void fl_set_pointer(fl_state_t *state, int32_t x, int32_t y, bool down)
         fl_menu_tap(state, x, y);
         return;
     }
+    if (state->phase == FL_PHASE_TITLE) {
+        fl_title_tap(state, x, y);
+        return;
+    }
+    if (state->phase == FL_PHASE_SETTINGS) {
+        fl_settings_tap(state, x, y);
+        return;
+    }
+    if (state->phase == FL_PHASE_ENDING) {
+        fl_ending_tap(state);
+        return;
+    }
     if (state->phase == FL_PHASE_WON || state->phase == FL_PHASE_LOST) {
         fl_end_tap(state, x, y);
         return;
@@ -2439,6 +2614,9 @@ const char *fl_phase_name(const fl_state_t *state)
     case FL_PHASE_WON: return "won";
     case FL_PHASE_LOST: return "lost";
     case FL_PHASE_MENU: return "menu";
+    case FL_PHASE_TITLE: return "title";
+    case FL_PHASE_SETTINGS: return "settings";
+    case FL_PHASE_ENDING: return "ending";
     default: return "unknown";
     }
 }

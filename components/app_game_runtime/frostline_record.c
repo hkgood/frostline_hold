@@ -8,6 +8,9 @@
  *
  * Version 1 held a single best run. Version 2 holds one entry per level; a
  * version 1 record is read as the first level's entry so nothing is lost.
+ * Version 3 appends the settings and the enemies already introduced; it
+ * starts with the version 2 layout, so a version 2 record is read as its
+ * prefix.
  */
 #include <stdio.h>
 #include <string.h>
@@ -17,10 +20,36 @@
 #define FROSTLINE_NVS_NAMESPACE "frostline"
 #define FROSTLINE_NVS_KEY "campaign"
 
+/* The version 2 record: version, best scores, stars. */
+#define FROSTLINE_RECORD_V2_SIZE (4u + 4u * FROSTLINE_RECORD_LEVELS + FROSTLINE_RECORD_LEVELS)
+
 static void frostline_record_clear(frostline_record_t *record)
 {
     memset(record, 0, sizeof(*record));
     record->version = FROSTLINE_RECORD_VERSION;
+}
+
+/* Read a stored blob of `size` bytes: the current layout, or a version 2
+ * prefix of it. */
+static bool frostline_record_from_bytes(frostline_record_t *record,
+                                        const unsigned char *bytes, size_t size)
+{
+    uint32_t version = 0;
+    if (size < sizeof(version)) {
+        return false;
+    }
+    memcpy(&version, bytes, sizeof(version));
+    if (size == sizeof(*record) && version == FROSTLINE_RECORD_VERSION) {
+        memcpy(record, bytes, sizeof(*record));
+        return true;
+    }
+    if (size == FROSTLINE_RECORD_V2_SIZE && version == 2) {
+        frostline_record_clear(record);
+        memcpy(record, bytes, FROSTLINE_RECORD_V2_SIZE);
+        record->version = FROSTLINE_RECORD_VERSION;
+        return true;
+    }
+    return false;
 }
 
 /* A version 1 record: the best score, the wave it reached, its stars. */
@@ -51,12 +80,15 @@ bool frostline_record_load(frostline_record_t *record)
     if (!frostline_nvs_open(&handle)) {
         return false;
     }
-    size_t size = sizeof(*record);
-    esp_err_t error = nvs_get_blob(handle, FROSTLINE_NVS_KEY, record, &size);
-    if (error == ESP_OK && size == sizeof(*record)
-            && record->version == FROSTLINE_RECORD_VERSION) {
-        nvs_close(handle);
-        return true;
+    unsigned char bytes[sizeof(*record)];
+    size_t size = 0;
+    esp_err_t error = nvs_get_blob(handle, FROSTLINE_NVS_KEY, NULL, &size);
+    if (error == ESP_OK && size <= sizeof(bytes)) {
+        error = nvs_get_blob(handle, FROSTLINE_NVS_KEY, bytes, &size);
+        if (error == ESP_OK && frostline_record_from_bytes(record, bytes, size)) {
+            nvs_close(handle);
+            return true;
+        }
     }
     /* No campaign yet: carry over the single-level record if there is one. */
     uint32_t score = 0;
@@ -128,12 +160,10 @@ bool frostline_record_load(frostline_record_t *record)
     unsigned char bytes[sizeof(frostline_record_t) + 1];
     size_t size = fread(bytes, 1, sizeof(bytes), file);
     fclose(file);
-    if (size == sizeof(frostline_record_t)) {
-        memcpy(record, bytes, sizeof(*record));
-        if (record->version == FROSTLINE_RECORD_VERSION) {
-            return true;
-        }
-    } else if (size == sizeof(frostline_record_v1_t)) {
+    if (frostline_record_from_bytes(record, bytes, size)) {
+        return true;
+    }
+    if (size == sizeof(frostline_record_v1_t)) {
         frostline_record_v1_t old;
         memcpy(&old, bytes, sizeof(old));
         if (old.version == 1) {

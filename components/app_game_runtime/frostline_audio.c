@@ -26,8 +26,14 @@ static const char *const SFX_ASSETS[FL_SFX_COUNT] = {
     "boss.sound",
 };
 
-#define MUSIC_ASSET "music_battle.sound"
+static const char *const MUSIC_ASSETS[FL_MUSIC_COUNT] = {
+    NULL, "music_title.sound", "music_battle.sound", "music_boss.sound",
+};
 #endif
+
+/* The full-scale music level; the settings take a fifth of it per step. */
+#define MUSIC_FULL 0.26f
+#define VOLUME_STEPS 4
 
 /* The browser preview only plays a sound when the name changes, so the Host
  * rotates through two spellings of the same file. The second spelling exists
@@ -94,7 +100,7 @@ static const fl_cue_rule_t RULES[] = {
 
 #if defined(RAYLIB_LITE_GAME_NATIVE)
 static Sound s_sounds[FL_SFX_COUNT];
-static Music s_music;
+static Music s_music[FL_MUSIC_COUNT];
 #endif
 
 static void play_cue(frostline_audio_t *audio, uint8_t cue)
@@ -122,7 +128,7 @@ static void play_cue(frostline_audio_t *audio, uint8_t cue)
     audio->variant = (uint8_t)((audio->variant + 1u) & 1u);
 
 #if defined(RAYLIB_LITE_GAME_NATIVE)
-    if (audio->ready) {
+    if (audio->ready && audio->sound_volume > 0) {
         PlaySound(s_sounds[cue]);
     }
 #else
@@ -130,10 +136,11 @@ static void play_cue(frostline_audio_t *audio, uint8_t cue)
 #endif
 }
 
-static void fire_haptics(const fl_cue_rule_t *rule)
+static void fire_haptics(const frostline_audio_t *audio,
+                         const fl_cue_rule_t *rule)
 {
 #if defined(RAYLIB_LITE_GAME_NATIVE)
-    if (!rule->haptic) {
+    if (!rule->haptic || !audio->haptics) {
         return;
     }
     if (rule->haptic_two) {
@@ -145,6 +152,7 @@ static void fire_haptics(const fl_cue_rule_t *rule)
         raylib_lite_native_feedback_pulse(rule->haptic, rule->haptic_ms);
     }
 #else
+    (void)audio;
     (void)rule;
 #endif
 }
@@ -155,14 +163,19 @@ void frostline_audio_init(frostline_audio_t *audio)
         return;
     }
     memset(audio, 0, sizeof(*audio));
+    audio->music_volume = VOLUME_STEPS;
+    audio->sound_volume = VOLUME_STEPS;
+    audio->haptics = true;
 #if defined(RAYLIB_LITE_GAME_NATIVE)
     InitAudioDevice();
     if (IsAudioDeviceReady()) {
         for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
             s_sounds[i] = LoadSound(SFX_ASSETS[i]);
         }
-        s_music = LoadMusicStream(MUSIC_ASSET);
-        SetMusicVolume(s_music, 0.26f);
+        for (unsigned i = 1; i < FL_MUSIC_COUNT; ++i) {
+            s_music[i] = LoadMusicStream(MUSIC_ASSETS[i]);
+            SetMusicVolume(s_music[i], MUSIC_FULL);
+        }
         audio->ready = true;
     }
     raylib_lite_native_feedback_init();
@@ -183,9 +196,11 @@ void frostline_audio_shutdown(frostline_audio_t *audio)
                 UnloadSound(s_sounds[i]);
             }
         }
-        if (s_music.frameCount) {
-            StopMusicStream(s_music);
-            UnloadMusicStream(s_music);
+        for (unsigned i = 1; i < FL_MUSIC_COUNT; ++i) {
+            if (s_music[i].frameCount) {
+                StopMusicStream(s_music[i]);
+                UnloadMusicStream(s_music[i]);
+            }
         }
         CloseAudioDevice();
     }
@@ -193,6 +208,29 @@ void frostline_audio_shutdown(frostline_audio_t *audio)
 #endif
     audio->ready = false;
     audio->music_playing = false;
+}
+
+void frostline_audio_configure(frostline_audio_t *audio, uint8_t music,
+                               uint8_t sound, bool haptics)
+{
+    if (!audio) {
+        return;
+    }
+    audio->music_volume = music > VOLUME_STEPS ? VOLUME_STEPS : music;
+    audio->sound_volume = sound > VOLUME_STEPS ? VOLUME_STEPS : sound;
+    audio->haptics = haptics;
+#if defined(RAYLIB_LITE_GAME_NATIVE)
+    if (audio->ready) {
+        float level = (float)audio->sound_volume / (float)VOLUME_STEPS;
+        for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
+            SetSoundVolume(s_sounds[i], level);
+        }
+        float theme = MUSIC_FULL * (float)audio->music_volume / (float)VOLUME_STEPS;
+        for (unsigned i = 1; i < FL_MUSIC_COUNT; ++i) {
+            SetMusicVolume(s_music[i], theme);
+        }
+    }
+#endif
 }
 
 void frostline_audio_tap(frostline_audio_t *audio)
@@ -235,7 +273,7 @@ void frostline_audio_update(frostline_audio_t *audio,
         audio->pending_tap = false;
         audio->cooldown[chosen] = chosen_rule->gap;
         play_cue(audio, (uint8_t)chosen);
-        fire_haptics(chosen_rule);
+        fire_haptics(audio, chosen_rule);
     } else if (audio->pending_tap) {
         audio->pending_tap = false;
         if (!audio->cooldown[FL_SFX_UI_TAP]) {
@@ -244,19 +282,31 @@ void frostline_audio_update(frostline_audio_t *audio,
         }
     }
 
-    /* The theme runs under a wave and stops when the wave is over. */
-    audio->music_wanted = frame->wave_active != 0;
-#if defined(RAYLIB_LITE_GAME_NATIVE)
-    if (audio->ready && s_music.frameCount) {
-        if (audio->music_wanted && !audio->music_playing) {
-            PlayMusicStream(s_music);
-            audio->music_playing = true;
-        } else if (!audio->music_wanted && audio->music_playing) {
-            StopMusicStream(s_music);
-            audio->music_playing = false;
-        }
+    /* One theme at a time: the screen names it, silence when muted. A
+     * frame that names none but has a wave running gets the battle drum. */
+    uint8_t wanted = frame->music;
+    if (wanted == FL_MUSIC_NONE && frame->wave_active) {
+        wanted = FL_MUSIC_BATTLE;
     }
+    if (wanted >= FL_MUSIC_COUNT || audio->music_volume == 0) {
+        wanted = FL_MUSIC_NONE;
+    }
+    audio->music_wanted = wanted != FL_MUSIC_NONE;
+    if (wanted != audio->music_track) {
+#if defined(RAYLIB_LITE_GAME_NATIVE)
+        if (audio->ready) {
+            if (audio->music_track != FL_MUSIC_NONE
+                    && s_music[audio->music_track].frameCount) {
+                StopMusicStream(s_music[audio->music_track]);
+            }
+            if (wanted != FL_MUSIC_NONE && s_music[wanted].frameCount) {
+                PlayMusicStream(s_music[wanted]);
+            }
+        }
 #endif
+        audio->music_track = wanted;
+    }
+    audio->music_playing = audio->music_track != FL_MUSIC_NONE;
 }
 
 const char *frostline_audio_name(const frostline_audio_t *audio)

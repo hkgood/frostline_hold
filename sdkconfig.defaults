@@ -70,3 +70,7 @@ CONFIG_APP_PROJECT_VER="0.1.0"
 CONFIG_MOSAICO_GAME_FRAMEBUFFER_COUNT=3
 
 CONFIG_TINYUSB_CDC_COUNT=2
+
+# 10 atlases + 30 sounds are embedded; registrations past the engine's
+# default of 32 fail silently and the game cannot start.
+CONFIG_RAYLIB_LITE_MAX_ASSETS=64

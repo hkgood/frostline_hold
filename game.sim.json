@@ -7,6 +7,10 @@
     "components/app_game_runtime/app_game_runtime.c",
     "components/app_game_runtime/frostline_record.c",
     "components/app_game_runtime/frostline_audio.c",
-    "components/app_game_runtime/frostline_view.c"
+    "components/app_game_runtime/frostline_view.c",
+    "components/app_game_runtime/frostline_text.c",
+    "components/app_game_runtime/frostline_fx.c",
+    "components/app_game_runtime/frostline_scenery.c",
+    "components/app_game_runtime/frostline_screens.c"
   ]
 }

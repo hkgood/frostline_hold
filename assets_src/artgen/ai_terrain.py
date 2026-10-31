@@ -331,6 +331,13 @@ def build_level_background(level):
         # The lanes decide where the enemies walk, so the trail follows them.
         for route in routes:
             clear_dark_track(canvas, route, 9, rng)
+        # Where the drawn road stops short of the gate, cut the rest.
+        if "carve_from" in level:
+            fx, fy = level["carve_from"]
+            lane_a = routes[0]
+            start = min(range(len(lane_a)),
+                        key=lambda i: (lane_a[i][0] - fx) ** 2 + (lane_a[i][1] - fy) ** 2)
+            carve_road(canvas, [lane_a[start:]], rng)
 
     _clear_sites(canvas, level, rng)
 

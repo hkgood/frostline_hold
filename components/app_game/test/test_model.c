@@ -1247,8 +1247,94 @@ static void test_a_boss_at_the_gate_costs_ten_lives(void)
     assert(lives - state.lives == 10);
 }
 
+/* ------------------------------------------------------------------ */
+/* Title, settings and ending                                          */
+/* ------------------------------------------------------------------ */
+
+static void tap_setting(fl_state_t *state, int row, int part)
+{
+    int x, y, w, h;
+    assert(fl_settings_button_rect(row, part, &x, &y, &w, &h));
+    tap(state, x + w / 2, y + h / 2);
+}
+
+static void test_the_title_leads_to_the_map_and_the_settings(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_state_open_title(&state);
+    assert(state.phase == FL_PHASE_TITLE);
+    tap(&state, FL_TITLE_BTN_X + 10, FL_TITLE_SETTINGS_Y + 10);
+    assert(state.phase == FL_PHASE_SETTINGS);
+    tap(&state, FL_SET_BACK_X + 10, FL_SET_BACK_Y + 10);
+    assert(state.phase == FL_PHASE_TITLE);
+    tap(&state, FL_TITLE_BTN_X + 10, FL_TITLE_START_Y + 10);
+    assert(state.phase == FL_PHASE_MENU);
+}
+
+static void test_settings_step_toggle_and_count_changes(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_SETTINGS;
+    uint16_t serial = state.settings_serial;
+    tap_setting(&state, FL_SET_ROW_MUSIC, 0);
+    assert(state.settings.music == FL_VOLUME_MAX - 1);
+    tap_setting(&state, FL_SET_ROW_MUSIC, 1);
+    tap_setting(&state, FL_SET_ROW_MUSIC, 1);
+    assert(state.settings.music == FL_VOLUME_MAX);
+    tap_setting(&state, FL_SET_ROW_HAPTICS, 0);
+    assert(state.settings.haptics == 0);
+    tap_setting(&state, FL_SET_ROW_LANGUAGE, 0);
+    assert(state.settings.lang == 1);
+    assert(state.settings_serial != serial);
+    /* Settings outlive a new run. */
+    assert(fl_state_start_level(&state, 0));
+    assert(state.settings.lang == 1 && state.settings.haptics == 0);
+}
+
+static void test_reset_asks_twice_before_erasing(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.level_stars[0] = 3;
+    state.level_best[0] = 900;
+    state.phase = FL_PHASE_SETTINGS;
+    uint16_t serial = state.reset_serial;
+    tap_setting(&state, FL_SET_ROW_RESET, 0);
+    assert(state.reset_armed == 1 && state.level_stars[0] == 3);
+    tap_setting(&state, FL_SET_ROW_RESET, 0);
+    assert(state.level_stars[0] == 0 && state.level_best[0] == 0);
+    assert(state.reset_serial != serial);
+}
+
+static void test_the_last_win_leads_to_the_ending(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    for (uint8_t i = 0; i + 1 < fl_level_count(); ++i) {
+        state.level_stars[i] = 1;
+    }
+    assert(fl_state_start_level(&state, (uint8_t)(fl_level_count() - 1)));
+    win_level(&state, 20);
+    assert(state.phase == FL_PHASE_WON);
+    tap_panel(&state, FL_PANEL_BTN_NEXT);
+    assert(state.phase == FL_PHASE_ENDING);
+    tap(&state, 240, 240);
+    assert(state.phase == FL_PHASE_ENDING);   /* too soon to leave */
+    for (int i = 0; i < FL_ENDING_MIN_TICKS; ++i) {
+        fl_state_update(&state);
+    }
+    tap(&state, 240, 240);
+    assert(state.phase == FL_PHASE_MENU);
+}
+
 int main(void)
 {
+    test_the_title_leads_to_the_map_and_the_settings();
+    test_settings_step_toggle_and_count_changes();
+    test_reset_asks_twice_before_erasing();
+    test_the_last_win_leads_to_the_ending();
     test_only_the_first_level_is_open_at_first();
     test_winning_a_level_opens_the_next();
     test_the_next_button_starts_the_next_level();

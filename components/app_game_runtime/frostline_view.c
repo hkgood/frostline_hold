@@ -5,8 +5,8 @@
  * dithered textures baked at build time.
  *
  * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
-#include "include/frostline_view.h"
-#include "../app_game/data/frostline_level.h"
+#include "private/frostline_view_internal.h"
+#include "include/frostline_text.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -17,31 +17,6 @@
 #include "raylib_lite_assets.h"
 #include "raylib_lite_raylib.h"
 
-/* The packer puts the source art centred in a cell that is four pixels
- * larger, so every sprite frame carries two pixels of padding per side. */
-#define SPRITE_PAD 2
-
-/* Sprite sheets carry the palette already; a neutral tint draws them as-is. */
-#define TINT_NONE ((Color){255, 255, 255, 255})
-
-/* Every size is the native cell of its sheet, so nothing is ever rescaled
- * and the dither patterns land on the panel pixel for pixel. */
-#define TOWER_DRAW_SIZE 56.0f
-#define ENEMY_DRAW_SIZE 40.0f
-#define HERO_DRAW_SIZE 48.0f
-#define HUSK_DRAW_SIZE 48.0f
-#define TITAN_DRAW_SIZE 80.0f
-#define PAD_DRAW_SIZE 40.0f
-#define PROJECTILE_DRAW_SIZE 16.0f
-#define ICON_DRAW_SIZE 28
-#define CASTLE_FX_SIZE 28.0f
-/* A standing sprite has its feet this far above the bottom of its cell. */
-#define SPRITE_FOOT 6.0f
-
-#define ENEMY_FRAMES 6
-#define CASTLE_FLAG_FRAMES 6
-#define CASTLE_FLAME_FRAMES 4
-
 /* Where the moving parts hang on the castle plate baked into the map. These
  * mirror CASTLE_* in assets_src/artgen/ai_terrain.py and must agree. */
 #define CASTLE_ORIGIN_X (FL_GOAL.x - 92)
@@ -50,22 +25,10 @@
 #define CASTLE_POLE_TOP (CASTLE_ORIGIN_Y + 12)
 static const int CASTLE_BRAZIERS[2][2] = {{66, 89}, {112, 91}};
 
-/* Tower sprites are "tower_<key>_<variant>": level 1, level 2, then the two
- * level 3 branches. The keys come from the generated level data. */
-#define TOWER_VARIANTS 4
+/* Level 1, level 2, then the two level 3 branches. */
 static const char *const TOWER_VARIANT_NAMES[TOWER_VARIANTS] = {
     "lv1", "lv2", "lv3a", "lv3b",
 };
-
-/* Which sheet each enemy lives on, and how many ticks each walk frame
- * holds: the heavier the creature, the slower its stride. */
-enum { SHEET_PROPS, SHEET_HUSK, SHEET_TITAN };
-
-typedef struct {
-    uint8_t sheet;
-    uint8_t step;
-    const char *alt;   /* suffix of its second look, or NULL */
-} enemy_look_t;
 
 static const enemy_look_t ENEMY_LOOKS[FL_ENEMY_KIND_COUNT] = {
     [FL_ENEMY_WOLF] = {SHEET_PROPS, 4, NULL},
@@ -85,175 +48,148 @@ static const enemy_look_t ENEMY_LOOKS[FL_ENEMY_KIND_COUNT] = {
     [FL_ENEMY_KING] = {SHEET_TITAN, 9, NULL},
 };
 
-/* The crow's body sits this far down its cell (CROW_BODY_Y in sprites.py),
- * so the view can hang it exactly where the model aims at it. */
-#define CROW_BODY_Y 22
+view_assets_t fv_assets;
 
-#define SOLDIER_DRAW_SIZE 40.0f
-#define SOLDIER_WALK_FRAMES 4
-#define EMBER_FLAME_FRAMES 4
-
-typedef struct {
-    raylib_lite_atlas_t terrain;
-    raylib_lite_atlas_t units;
-    raylib_lite_atlas_t heroes;
-    raylib_lite_atlas_t props;
-    raylib_lite_atlas_t props_husk;
-    raylib_lite_atlas_t props_titan;
-    raylib_lite_atlas_t fx;
-    raylib_lite_atlas_t icons;
-    raylib_lite_atlas_t castle_fx;
-    raylib_lite_asset_id_t maps[FL_LEVEL_COUNT];   /* "map_<key>" per level */
-    raylib_lite_asset_id_t campaign_map;
-    raylib_lite_asset_id_t nodes[FL_MAX_LEVELS];   /* medallion per stage */
-    raylib_lite_asset_id_t node_locked;
-    raylib_lite_asset_id_t towers[FL_TOWER_KIND_COUNT][TOWER_VARIANTS];
-    raylib_lite_asset_id_t enemies[FL_ENEMY_KIND_COUNT][ENEMY_FRAMES];
-    raylib_lite_asset_id_t enemies_alt[FL_ENEMY_KIND_COUNT][ENEMY_FRAMES];
-    raylib_lite_asset_id_t pads[2];
-    raylib_lite_asset_id_t projectile;
-    raylib_lite_asset_id_t ember_pot[EMBER_FLAME_FRAMES];
-    raylib_lite_asset_id_t ember_flame[EMBER_FLAME_FRAMES];
-    raylib_lite_asset_id_t spark[6];
-    raylib_lite_asset_id_t soldier_walk[SOLDIER_WALK_FRAMES];
-    raylib_lite_asset_id_t soldier_strike;
-    raylib_lite_asset_id_t icon_heart;
-    raylib_lite_asset_id_t icon_coin;
-    raylib_lite_asset_id_t icon_score;
-    raylib_lite_asset_id_t icon_nova;
-    raylib_lite_asset_id_t icon_star;
-    raylib_lite_asset_id_t cards[FL_TOWER_KIND_COUNT];   /* by tower kind */
-    raylib_lite_asset_id_t card_hero;
-    raylib_lite_asset_id_t hero[4];
-    raylib_lite_asset_id_t flag[CASTLE_FLAG_FRAMES];
-    raylib_lite_asset_id_t flame[CASTLE_FLAME_FRAMES];
-} view_assets_t;
-
-static view_assets_t s_assets;
+/* A missing atlas stops the game at start-up, so name it on the console. */
+static raylib_lite_atlas_t load_atlas(const char *name)
+{
+    raylib_lite_atlas_t atlas = raylib_lite_atlas_load(name);
+    if (atlas.texture.id == 0) {
+        printf("frostline: cannot load %s\n", name);
+    }
+    return atlas;
+}
 
 void frostline_view_init(void)
 {
-    memset(&s_assets, 0, sizeof(s_assets));
-    s_assets.terrain = raylib_lite_atlas_load("terrain.atlas");
-    s_assets.units = raylib_lite_atlas_load("units.atlas");
-    s_assets.heroes = raylib_lite_atlas_load("heroes.atlas");
-    s_assets.props = raylib_lite_atlas_load("props.atlas");
-    s_assets.props_husk = raylib_lite_atlas_load("props_husk.atlas");
-    s_assets.props_titan = raylib_lite_atlas_load("props_titan.atlas");
-    s_assets.fx = raylib_lite_atlas_load("fx.atlas");
-    s_assets.icons = raylib_lite_atlas_load("icons.atlas");
-    s_assets.castle_fx = raylib_lite_atlas_load("castle_fx.atlas");
+    memset(&fv_assets, 0, sizeof(fv_assets));
+    fv_assets.terrain = load_atlas("terrain.atlas");
+    fv_assets.units = load_atlas("units.atlas");
+    fv_assets.heroes = load_atlas("heroes.atlas");
+    fv_assets.props = load_atlas("props.atlas");
+    fv_assets.props_husk = load_atlas("props_husk.atlas");
+    fv_assets.props_titan = load_atlas("props_titan.atlas");
+    fv_assets.fx = load_atlas("fx.atlas");
+    fv_assets.icons = load_atlas("icons.atlas");
+    fv_assets.castle_fx = load_atlas("castle_fx.atlas");
+    fv_assets.title = load_atlas("title.atlas");
+    fv_assets.title_backdrop = raylib_lite_asset_id("title_backdrop");
+    fv_assets.ending_backdrop = raylib_lite_asset_id("ending_backdrop");
+    fv_assets.logo[FL_LANG_ZH] = raylib_lite_asset_id("logo_zh");
+    fv_assets.logo[FL_LANG_EN] = raylib_lite_asset_id("logo_en");
 
     for (int i = 0; i < FL_LEVEL_COUNT; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "map_%s", FL_LEVELS[i].key);
-        s_assets.maps[i] = raylib_lite_asset_id(name);
+        fv_assets.maps[i] = raylib_lite_asset_id(name);
     }
-    s_assets.campaign_map = raylib_lite_asset_id("map_campaign");
+    fv_assets.campaign_map = raylib_lite_asset_id("map_campaign");
     for (int i = 0; i < FL_MAX_LEVELS; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "node_%d", i);
-        s_assets.nodes[i] = raylib_lite_asset_id(name);
+        fv_assets.nodes[i] = raylib_lite_asset_id(name);
     }
-    s_assets.node_locked = raylib_lite_asset_id("node_locked");
+    fv_assets.node_locked = raylib_lite_asset_id("node_locked");
     for (int kind = FL_TOWER_GUARD; kind < FL_TOWER_KIND_COUNT; ++kind) {
         char name[32];
         for (int variant = 0; variant < TOWER_VARIANTS; ++variant) {
             snprintf(name, sizeof(name), "tower_%s_%s", FL_TOWER_KEYS[kind],
                      TOWER_VARIANT_NAMES[variant]);
-            s_assets.towers[kind][variant] = raylib_lite_asset_id(name);
+            fv_assets.towers[kind][variant] = raylib_lite_asset_id(name);
         }
         snprintf(name, sizeof(name), "card_%s", FL_TOWER_KEYS[kind]);
-        s_assets.cards[kind] = raylib_lite_asset_id(name);
+        fv_assets.cards[kind] = raylib_lite_asset_id(name);
     }
     for (int i = 0; i < EMBER_FLAME_FRAMES; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "ember_pot_%d", i);
-        s_assets.ember_pot[i] = raylib_lite_asset_id(name);
+        fv_assets.ember_pot[i] = raylib_lite_asset_id(name);
         snprintf(name, sizeof(name), "ember_flame_%d", i);
-        s_assets.ember_flame[i] = raylib_lite_asset_id(name);
+        fv_assets.ember_flame[i] = raylib_lite_asset_id(name);
     }
     for (int i = 0; i < 6; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "spark_%d", i);
-        s_assets.spark[i] = raylib_lite_asset_id(name);
+        fv_assets.spark[i] = raylib_lite_asset_id(name);
     }
     for (int i = 0; i < SOLDIER_WALK_FRAMES; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "soldier_%d", i);
-        s_assets.soldier_walk[i] = raylib_lite_asset_id(name);
+        fv_assets.soldier_walk[i] = raylib_lite_asset_id(name);
     }
-    s_assets.soldier_strike = raylib_lite_asset_id("soldier_strike");
+    fv_assets.soldier_strike = raylib_lite_asset_id("soldier_strike");
     for (int kind = 0; kind < FL_ENEMY_KIND_COUNT; ++kind) {
         const char *key = FL_ENEMY_KEYS[kind];
         const char *alt = ENEMY_LOOKS[kind].alt;
         for (int frame = 0; frame < ENEMY_FRAMES; ++frame) {
             char name[40];
             snprintf(name, sizeof(name), "enemy_%s_%d", key, frame);
-            s_assets.enemies[kind][frame] = raylib_lite_asset_id(name);
+            fv_assets.enemies[kind][frame] = raylib_lite_asset_id(name);
             if (alt != NULL) {
                 snprintf(name, sizeof(name), "enemy_%s_%s_%d", key, alt, frame);
             }
-            s_assets.enemies_alt[kind][frame] = raylib_lite_asset_id(name);
+            fv_assets.enemies_alt[kind][frame] = raylib_lite_asset_id(name);
         }
     }
     for (int i = 0; i < 2; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "build_pad_%d", i);
-        s_assets.pads[i] = raylib_lite_asset_id(name);
+        fv_assets.pads[i] = raylib_lite_asset_id(name);
     }
-    s_assets.projectile = raylib_lite_asset_id("projectile_0_0");
-    s_assets.icon_heart = raylib_lite_asset_id("icon_heart");
-    s_assets.icon_coin = raylib_lite_asset_id("icon_coin");
-    s_assets.icon_score = raylib_lite_asset_id("icon_score");
-    s_assets.icon_nova = raylib_lite_asset_id("icon_nova");
-    s_assets.icon_star = raylib_lite_asset_id("icon_star");
-    s_assets.card_hero = raylib_lite_asset_id("card_hero");
+    fv_assets.projectile = raylib_lite_asset_id("projectile_0_0");
+    fv_assets.icon_heart = raylib_lite_asset_id("icon_heart");
+    fv_assets.icon_coin = raylib_lite_asset_id("icon_coin");
+    fv_assets.icon_score = raylib_lite_asset_id("icon_score");
+    fv_assets.icon_nova = raylib_lite_asset_id("icon_nova");
+    fv_assets.icon_star = raylib_lite_asset_id("icon_star");
+    fv_assets.card_hero = raylib_lite_asset_id("card_hero");
     for (int i = 0; i < 4; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "hero_warden_%d", i);
-        s_assets.hero[i] = raylib_lite_asset_id(name);
+        fv_assets.hero[i] = raylib_lite_asset_id(name);
     }
     for (int i = 0; i < CASTLE_FLAG_FRAMES; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "castle_flag_%d", i);
-        s_assets.flag[i] = raylib_lite_asset_id(name);
+        fv_assets.flag[i] = raylib_lite_asset_id(name);
     }
     for (int i = 0; i < CASTLE_FLAME_FRAMES; ++i) {
         char name[32];
         snprintf(name, sizeof(name), "castle_flame_%d", i);
-        s_assets.flame[i] = raylib_lite_asset_id(name);
+        fv_assets.flame[i] = raylib_lite_asset_id(name);
     }
 }
 
 void frostline_view_shutdown(void)
 {
-    raylib_lite_atlas_unload(s_assets.terrain);
-    raylib_lite_atlas_unload(s_assets.units);
-    raylib_lite_atlas_unload(s_assets.heroes);
-    raylib_lite_atlas_unload(s_assets.props);
-    raylib_lite_atlas_unload(s_assets.props_husk);
-    raylib_lite_atlas_unload(s_assets.props_titan);
-    raylib_lite_atlas_unload(s_assets.fx);
-    raylib_lite_atlas_unload(s_assets.icons);
-    raylib_lite_atlas_unload(s_assets.castle_fx);
-    memset(&s_assets, 0, sizeof(s_assets));
+    raylib_lite_atlas_unload(fv_assets.terrain);
+    raylib_lite_atlas_unload(fv_assets.units);
+    raylib_lite_atlas_unload(fv_assets.heroes);
+    raylib_lite_atlas_unload(fv_assets.props);
+    raylib_lite_atlas_unload(fv_assets.props_husk);
+    raylib_lite_atlas_unload(fv_assets.props_titan);
+    raylib_lite_atlas_unload(fv_assets.fx);
+    raylib_lite_atlas_unload(fv_assets.icons);
+    raylib_lite_atlas_unload(fv_assets.castle_fx);
+    raylib_lite_atlas_unload(fv_assets.title);
+    memset(&fv_assets, 0, sizeof(fv_assets));
 }
 
 bool frostline_view_ready(void)
 {
-    return s_assets.terrain.texture.id != 0 && s_assets.units.texture.id != 0
-           && s_assets.heroes.texture.id != 0
-           && s_assets.props.texture.id != 0 && s_assets.fx.texture.id != 0
-           && s_assets.props_husk.texture.id != 0
-           && s_assets.props_titan.texture.id != 0
-           && s_assets.icons.texture.id != 0
-           && s_assets.castle_fx.texture.id != 0;
+    return fv_assets.terrain.texture.id != 0 && fv_assets.units.texture.id != 0
+           && fv_assets.heroes.texture.id != 0
+           && fv_assets.props.texture.id != 0 && fv_assets.fx.texture.id != 0
+           && fv_assets.props_husk.texture.id != 0
+           && fv_assets.props_titan.texture.id != 0
+           && fv_assets.icons.texture.id != 0
+           && fv_assets.castle_fx.texture.id != 0
+           && fv_assets.title.texture.id != 0;
 }
 
 /* ------------------------------------------------------------------ */
 
-static void draw_padded(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
+void draw_padded(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                          float x, float y, float size)
 {
     const raylib_lite_sprite_frame_t *frame = raylib_lite_atlas_get_frame(atlas, id);
@@ -269,7 +205,7 @@ static void draw_padded(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                    (Vector2){0.0f, 0.0f}, 0.0f, TINT_NONE);
 }
 
-static void draw_full(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
+void draw_full(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                       float x, float y, float size)
 {
     const raylib_lite_sprite_frame_t *frame = raylib_lite_atlas_get_frame(atlas, id);
@@ -280,28 +216,157 @@ static void draw_full(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
                    (Vector2){0.0f, 0.0f}, 0.0f, TINT_NONE);
 }
 
-/* The engine font is a 5x7 grid scaled by whole steps of size / 8, so every
- * size from 8 to 15 draws the same 7 px glyph. Anything a finger presses
- * uses the doubled glyph, 14 px tall. */
-#define BUTTON_TEXT 16
-#define BUTTON_TEXT_HEIGHT 14
-
-static void draw_text_centered(const char *text, int center_x, int y, int size,
-                               Color color)
+/* A padded frame at its own size: for sheets whose cells differ. */
+bool draw_native(raylib_lite_atlas_t atlas, raylib_lite_asset_id_t id,
+                 float x, float y)
 {
-    int width = MeasureText(text, size);
-    DrawText(text, center_x - width / 2, y, size, color);
+    const raylib_lite_sprite_frame_t *frame = raylib_lite_atlas_get_frame(atlas, id);
+    if (!frame) {
+        return false;
+    }
+    Rectangle source = frame->source;
+    source.x += SPRITE_PAD;
+    source.y += SPRITE_PAD;
+    source.width -= SPRITE_PAD * 2;
+    source.height -= SPRITE_PAD * 2;
+    DrawTexturePro(atlas.texture, source,
+                   (Rectangle){x, y, source.width, source.height},
+                   (Vector2){0.0f, 0.0f}, 0.0f, TINT_NONE);
+    return true;
 }
 
-static void draw_panel(int x, int y, int w, int h, bool inverted)
+static const uint8_t BAYER4[4][4] = {
+    {0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5},
+};
+
+void draw_dither_ellipse(int cx, int cy, int rx, int ry, float density,
+                         Color color)
+{
+    if (rx <= 0 || ry <= 0 || density <= 0.0f) {
+        return;
+    }
+    int level = (int)(density * 16.0f);
+    for (int dy = -ry; dy <= ry; ++dy) {
+        float v = (float)dy / (float)ry;
+        int half = (int)((float)rx * sqrtf(1.0f - v * v));
+        int y = cy + dy;
+        const uint8_t *row = BAYER4[y & 3];
+        /* Paint runs of the cells the pattern lets through. */
+        int x = cx - half;
+        while (x <= cx + half) {
+            while (x <= cx + half && row[x & 3] >= level) {
+                ++x;
+            }
+            int start = x;
+            while (x <= cx + half && row[x & 3] < level) {
+                ++x;
+            }
+            if (start < x) {
+                DrawRectangle(start, y, x - start, 1, color);
+            }
+        }
+    }
+}
+
+void draw_dither_disc(int cx, int cy, int r, float density, Color color)
+{
+    draw_dither_ellipse(cx, cy, r, r, density, color);
+}
+
+/* Five points, ink case and paper face, so it reads on either tone. */
+void draw_star(int cx, int cy, int r, bool filled)
+{
+    Vector2 outer[5], inner[5];
+    for (int k = 0; k < 5; ++k) {
+        float a = -1.5707963f + (float)k * 1.2566371f;
+        float b = a + 0.6283185f;
+        outer[k] = (Vector2){(float)cx + cosf(a) * (float)r,
+                             (float)cy + sinf(a) * (float)r};
+        inner[k] = (Vector2){(float)cx + cosf(b) * (float)r * 0.45f,
+                             (float)cy + sinf(b) * (float)r * 0.45f};
+    }
+    Vector2 c = {(float)cx, (float)cy};
+    if (filled) {
+        for (int k = 0; k < 5; ++k) {
+            DrawTriangle(outer[k], c, inner[k], FL_PAPER);
+            DrawTriangle(inner[(k + 4) % 5], c, outer[k], FL_PAPER);
+        }
+    }
+    for (int k = 0; k < 5; ++k) {
+        DrawLineEx(outer[k], inner[k], 2.0f, FL_INK);
+        DrawLineEx(inner[(k + 4) % 5], outer[k], 2.0f, FL_INK);
+    }
+    if (!filled) {
+        /* A paper hairline inside the ink, so the empty star reads on ink. */
+        for (int k = 0; k < 5; ++k) {
+            DrawLineV(outer[k], inner[k], FL_PAPER);
+            DrawLineV(inner[(k + 4) % 5], outer[k], FL_PAPER);
+        }
+    }
+}
+
+const char *level_name(uint8_t level)
+{
+    if (level >= FL_LEVEL_COUNT) {
+        level = 0;
+    }
+    return fl_tr((fl_text_id_t)(FL_TXT_LEVEL_FIRST + level));
+}
+
+const char *tower_name(int kind)
+{
+    if (kind < 0 || kind >= FL_TOWER_KIND_COUNT) {
+        kind = 0;
+    }
+    return fl_tr((fl_text_id_t)(FL_TXT_TOWER_NONE + kind));
+}
+
+const char *upgrade_name(int kind, int stage, int option)
+{
+    if (kind <= FL_TOWER_NONE || kind >= FL_TOWER_KIND_COUNT || stage < 0
+            || stage > 1 || option < 0 || option > 1) {
+        return "";
+    }
+    return fl_tr((fl_text_id_t)(FL_TXT_UPGRADE_FIRST + (kind - 1) * 4
+                                + stage * 2 + option));
+}
+
+const enemy_look_t *enemy_look(int kind)
+{
+    return &ENEMY_LOOKS[kind >= 0 && kind < FL_ENEMY_KIND_COUNT ? kind : 0];
+}
+
+raylib_lite_atlas_t enemy_sheet(int kind, float *size)
+{
+    const enemy_look_t *look = enemy_look(kind);
+    if (look->sheet == SHEET_HUSK) {
+        *size = HUSK_DRAW_SIZE;
+        return fv_assets.props_husk;
+    }
+    if (look->sheet == SHEET_TITAN) {
+        *size = TITAN_DRAW_SIZE;
+        return fv_assets.props_titan;
+    }
+    *size = ENEMY_DRAW_SIZE;
+    return fv_assets.props;
+}
+
+void draw_panel(int x, int y, int w, int h, bool inverted)
 {
     DrawRectangle(x, y, w, h, inverted ? FL_PAPER : FL_INK);
     DrawRectangleLines(x, y, w, h, inverted ? FL_INK : FL_PAPER);
 }
 
+/* Numbers keep the engine's big digits in either language. */
+static void draw_text_centered_engine(const char *text, int center_x, int y,
+                                      int size, Color color)
+{
+    DrawText(text, center_x - MeasureText(text, size) / 2, y, size, color);
+}
+
 /* ------------------------------------------------------------------ */
 
-static const fl_level_t *current_level(const fl_state_t *model)
+const fl_level_t *current_level(const fl_state_t *model)
 {
     return &FL_LEVELS[model->level < FL_LEVEL_COUNT ? model->level : 0];
 }
@@ -309,10 +374,10 @@ static const fl_level_t *current_level(const fl_state_t *model)
 static void draw_background(const fl_state_t *model)
 {
     uint8_t level = model->level < FL_LEVEL_COUNT ? model->level : 0;
-    draw_full(s_assets.terrain, s_assets.maps[level], 0.0f, 0.0f, 480.0f);
+    draw_full(fv_assets.terrain, fv_assets.maps[level], 0.0f, 0.0f, 480.0f);
 }
 
-static bool corner_cut(int x, int y)
+bool corner_cut(int x, int y)
 {
     if (x >= FL_CORNER_RADIUS && x < FL_VIEW_WIDTH - FL_CORNER_RADIUS) {
         return false;
@@ -329,30 +394,13 @@ static bool corner_cut(int x, int y)
     return dx * dx + dy * dy > FL_CORNER_RADIUS * FL_CORNER_RADIUS;
 }
 
-/* Snow, a travelling glint on the road, and the gate's cloth and fire.
+/* A travelling glint on the road, and the gate's cloth and fire.
  * The stone of the castle is baked into the map; only the parts that move
  * are drawn here. */
 static void draw_world_motion(const fl_state_t *model)
 {
     uint32_t tick = model->tick;
     const fl_level_t *level = current_level(model);
-    for (int i = 0; i < 22; ++i) {
-        uint32_t speed = 1u + (uint32_t)(i % 3);
-        int x = (int)((i * 67u + tick * speed) % 400u) + 40;
-        int y = (int)((i * 41u + tick * (speed + 1u)) % 300u) + 56;
-        if (corner_cut(x, y)) {
-            continue;
-        }
-        /* One pixel and a dark neighbour, so a flake reads on snow and on ink. */
-        if (((unsigned)i + tick / 6u) % 2u == 0u) {
-            DrawRectangle(x, y, 1, 1, FL_PAPER);
-            DrawRectangle(x + 1, y, 1, 1, FL_INK);
-        } else {
-            DrawRectangle(x, y, 1, 1, FL_INK);
-            DrawRectangle(x, y + 1, 1, 1, FL_PAPER);
-        }
-    }
-
     int head = (int)((tick / 2u) % (uint32_t)level->lane_a_count);
     for (int i = 0; i < 4; ++i) {
         int index = (head + i * 6) % level->lane_a_count;
@@ -375,7 +423,7 @@ static void draw_world_motion(const fl_state_t *model)
     /* The pole is part of the castle plate; the cloth hangs off its top and
      * flies left, with the pole at the cell's right edge. */
     int flag = (int)((tick / 5u) % CASTLE_FLAG_FRAMES);
-    draw_padded(s_assets.castle_fx, s_assets.flag[flag],
+    draw_padded(fv_assets.castle_fx, fv_assets.flag[flag],
                 (float)(CASTLE_POLE_X - (int)CASTLE_FX_SIZE + 2),
                 (float)(CASTLE_POLE_TOP - 2), CASTLE_FX_SIZE);
 
@@ -384,7 +432,7 @@ static void draw_world_motion(const fl_state_t *model)
         int flame = (int)((tick / 3u + (unsigned)i * 2u) % CASTLE_FLAME_FRAMES);
         int bx = CASTLE_ORIGIN_X + CASTLE_BRAZIERS[i][0];
         int by = CASTLE_ORIGIN_Y + CASTLE_BRAZIERS[i][1];
-        draw_padded(s_assets.castle_fx, s_assets.flame[flame],
+        draw_padded(fv_assets.castle_fx, fv_assets.flame[flame],
                     (float)(bx - 14), (float)(by - 22), CASTLE_FX_SIZE);
     }
 }
@@ -414,7 +462,7 @@ static void draw_build_pads(const fl_state_t *model)
             continue;
         }
         int frame = model->ring_spot == i ? breathe : 0;
-        draw_padded(s_assets.props, s_assets.pads[frame],
+        draw_padded(fv_assets.props, fv_assets.pads[frame],
                     (float)(spot->x - PAD_DRAW_SIZE / 2),
                     (float)(spot->y - PAD_DRAW_SIZE / 2), PAD_DRAW_SIZE);
     }
@@ -424,7 +472,7 @@ static void draw_build_pads(const fl_state_t *model)
         }
         const fl_point_t *post = &level->posts[i];
         int frame = model->ring_post == i ? breathe : 0;
-        draw_padded(s_assets.props, s_assets.pads[frame],
+        draw_padded(fv_assets.props, fv_assets.pads[frame],
                     (float)(post->x - PAD_DRAW_SIZE / 2),
                     (float)(post->y - PAD_DRAW_SIZE / 2), PAD_DRAW_SIZE);
     }
@@ -437,7 +485,7 @@ static void draw_build_pads(const fl_state_t *model)
 /* A dashed circle that reads on snow and on forest: an ink dot every six
  * pixels of arc with a paper fleck on it. `march` turns it slowly so the
  * ring looks alive. */
-static void draw_dotted_circle(int cx, int cy, int radius, int march)
+void draw_dotted_circle(int cx, int cy, int radius, int march)
 {
     int dots = (int)(6.2831853f * (float)radius / 6.0f);
     if (dots < 12) {
@@ -505,7 +553,7 @@ static void draw_medallion(int x, int y, raylib_lite_asset_id_t portrait,
     DrawCircle(x, y, (float)(r + 2), FL_INK);
     DrawCircle(x, y, (float)r, FL_PAPER);
     DrawCircle(x, y, (float)(r - (picked ? 3 : 2)), FL_INK);
-    draw_padded(s_assets.icons, portrait, (float)(x - ICON_DRAW_SIZE / 2),
+    draw_padded(fv_assets.icons, portrait, (float)(x - ICON_DRAW_SIZE / 2),
                 (float)(y - ICON_DRAW_SIZE / 2), (float)ICON_DRAW_SIZE);
     if (!affordable) {
         for (int dy = -ICON_DRAW_SIZE / 2; dy < ICON_DRAW_SIZE / 2; dy += 2) {
@@ -523,9 +571,9 @@ static void draw_medallion(int x, int y, raylib_lite_asset_id_t portrait,
 static const char *ring_label(uint8_t entry)
 {
     if (entry == FL_RING_HERO) {
-        return "WARDEN";
+        return fl_tr(FL_TXT_UI_HERO_NAME);
     }
-    return entry < FL_TOWER_KIND_COUNT ? FL_TOWER_LABELS[entry] : "";
+    return entry < FL_TOWER_KIND_COUNT ? tower_name(entry) : "";
 }
 
 static void draw_ring(const fl_state_t *model)
@@ -575,7 +623,7 @@ static void draw_ring(const fl_state_t *model)
         uint16_t cost = fl_ring_cost(model, i);
         bool affordable = model->gold >= cost;
         raylib_lite_asset_id_t portrait =
-            entry == FL_RING_HERO ? s_assets.card_hero : s_assets.cards[entry];
+            entry == FL_RING_HERO ? fv_assets.card_hero : fv_assets.cards[entry];
         draw_medallion(sx, sy, portrait, pick == i, affordable, model->tick);
         draw_price_tag(sx, sy + FL_RING_ICON_R - 4, cost, affordable);
     }
@@ -584,8 +632,9 @@ static void draw_ring(const fl_state_t *model)
      * the ring sits low on the glass; the second tap builds it. */
     if (pick >= 0 && open >= 1.0f) {
         const char *name = ring_label(fl_ring_entry(model, pick));
-        const char *hint = "TAP AGAIN";
-        int w = MeasureText(name, BUTTON_TEXT) + MeasureText(hint, 10) + 26;
+        const char *hint = fl_tr(FL_TXT_UI_TAP_AGAIN);
+        int w = fl_text_width(name, FL_FONT_LARGE)
+                + fl_text_width(hint, FL_FONT_SMALL) + 26;
         int h = 22;
         int y = cy + radius + FL_RING_ICON_R + 14;
         if (y + h > FL_VIEW_HEIGHT - 14) {
@@ -599,9 +648,11 @@ static void draw_ring(const fl_state_t *model)
         }
         DrawRectangle(x - 1, y - 1, w + 2, h + 2, FL_PAPER);
         DrawRectangle(x, y, w, h, FL_INK);
-        DrawText(name, x + 8, y + (h - BUTTON_TEXT_HEIGHT) / 2, BUTTON_TEXT,
-                 FL_PAPER);
-        DrawText(hint, x + w - 8 - MeasureText(hint, 10), y + 7, 10, FL_PAPER);
+        fl_text_draw(name, x + 8, y + (h - fl_text_height(FL_FONT_LARGE)) / 2,
+                     FL_FONT_LARGE, FL_PAPER);
+        fl_text_draw(hint, x + w - 8 - fl_text_width(hint, FL_FONT_SMALL),
+                     y + (h - fl_text_height(FL_FONT_SMALL)) / 2, FL_FONT_SMALL,
+                     FL_PAPER);
     }
 }
 
@@ -633,8 +684,6 @@ static void draw_brackets(int x, int y, int w, int h)
         DrawRectangle(cx, vy, 1, arm, FL_PAPER);
     }
 }
-
-static uint32_t jag_hash(uint32_t a);
 
 /* One prism of ice: a paper wedge in an ink case, with a facet line down
  * its lit side. */
@@ -695,7 +744,7 @@ static void draw_tower(const fl_state_t *model, int i)
     /* The heavy throwers kick down a pixel as they let fly. */
     bool kicks = kind == FL_TOWER_SIEGE || kind == FL_TOWER_EMBER;
     float recoil = (kicks && tower->shot_tick < 3) ? 1.0f : 0.0f;
-    draw_padded(s_assets.units, s_assets.towers[kind][tower_variant(tower)], x,
+    draw_padded(fv_assets.units, fv_assets.towers[kind][tower_variant(tower)], x,
                 y + recoil, TOWER_DRAW_SIZE);
 
     /* The spire's tip and the obelisk's eye flare as they fire. */
@@ -741,7 +790,7 @@ static void draw_hero(const fl_state_t *model, int i)
     int frame = (int)((model->tick / 8u) % 4u);
     float x = (float)hero->x - HERO_DRAW_SIZE / 2.0f;
     float y = (float)hero->y - HERO_DRAW_SIZE + SPRITE_FOOT;
-    draw_padded(s_assets.heroes, s_assets.hero[frame], x, y, HERO_DRAW_SIZE);
+    draw_padded(fv_assets.heroes, fv_assets.hero[frame], x, y, HERO_DRAW_SIZE);
     /* Health bar: an ink trough with a paper core that drains. */
     int bar_x = hero->x - 14;
     int bar_y = (int)y - 4;
@@ -752,7 +801,7 @@ static void draw_hero(const fl_state_t *model, int i)
 
 /* The shadow a flyer casts on the road: a dithered oval, ink on every other
  * pixel, so the ground still shows through it. */
-static void draw_ground_shadow(int cx, int cy, int rx, int ry)
+void draw_ground_shadow(int cx, int cy, int rx, int ry)
 {
     for (int dy = -ry; dy <= ry; ++dy) {
         float v = (float)dy / (float)ry;
@@ -786,23 +835,27 @@ static void draw_enemy(const fl_state_t *model, int i)
     }
     const enemy_look_t *look = &ENEMY_LOOKS[kind];
     float size = ENEMY_DRAW_SIZE;
-    raylib_lite_atlas_t sheet = s_assets.props;
+    raylib_lite_atlas_t sheet = fv_assets.props;
     if (look->sheet == SHEET_HUSK) {
         size = HUSK_DRAW_SIZE;
-        sheet = s_assets.props_husk;
+        sheet = fv_assets.props_husk;
     } else if (look->sheet == SHEET_TITAN) {
         size = TITAN_DRAW_SIZE;
-        sheet = s_assets.props_titan;
+        sheet = fv_assets.props_titan;
     }
     /* Each enemy walks on its own beat, so a column does not march in step. */
     int frame = (int)((model->tick / look->step + (unsigned)i * 2u) % ENEMY_FRAMES);
     /* The second look: a golem out of its shell, a burrower under the road. */
     bool alt = (kind == FL_ENEMY_GOLEM && enemy->stage > 0) || enemy->burrowed;
-    raylib_lite_asset_id_t id = alt ? s_assets.enemies_alt[kind][frame]
-                                    : s_assets.enemies[kind][frame];
+    raylib_lite_asset_id_t id = alt ? fv_assets.enemies_alt[kind][frame]
+                                    : fv_assets.enemies[kind][frame];
     /* Whole pixels only: a fractional position would smear the dither. */
     int ex = (int)enemy->x;
     int ey = (int)enemy->y;
+    int jx, jy;
+    fx_enemy_jolt(i, &jx, &jy);
+    ex += jx;
+    ey += jy;
     float x = (float)ex - size / 2.0f;
     float y = (float)ey - size + SPRITE_FOOT;
     if (fl_enemy_flies(enemy)) {
@@ -855,20 +908,20 @@ static void draw_soldier(const fl_state_t *model, int i)
     const fl_soldier_t *soldier = &model->soldiers[i];
     raylib_lite_asset_id_t id;
     if (soldier->swing < 5) {
-        id = s_assets.soldier_strike;
+        id = fv_assets.soldier_strike;
     } else if (soldier->moving) {
-        id = s_assets.soldier_walk[(model->tick / 4u + (unsigned)i)
+        id = fv_assets.soldier_walk[(model->tick / 4u + (unsigned)i)
                                    % SOLDIER_WALK_FRAMES];
     } else {
         /* At its post it shifts its weight now and then. */
-        id = s_assets.soldier_walk[((model->tick / 24u + (unsigned)i) % 4u) == 0u
+        id = fv_assets.soldier_walk[((model->tick / 24u + (unsigned)i) % 4u) == 0u
                                        ? 1 : 0];
     }
     int sx = (int)soldier->x;
     int sy = (int)soldier->y;
     float x = (float)sx - SOLDIER_DRAW_SIZE / 2.0f;
     float y = (float)sy - SOLDIER_DRAW_SIZE + SPRITE_FOOT;
-    draw_padded(s_assets.props, id, x, y, SOLDIER_DRAW_SIZE);
+    draw_padded(fv_assets.props, id, x, y, SOLDIER_DRAW_SIZE);
     if (soldier->hp < soldier->max_hp && soldier->max_hp > 0) {
         int bar_x = sx - 7;
         int bar_y = (int)y + 8;
@@ -943,48 +996,9 @@ static void draw_actors(const fl_state_t *model)
     }
 }
 
-static void draw_projectiles(const fl_state_t *model)
-{
-    for (int i = 0; i < FL_MAX_PROJECTILES; ++i) {
-        const fl_projectile_t *shot = &model->projectiles[i];
-        if (!shot->active) {
-            continue;
-        }
-        int px = (int)shot->x;
-        int py = (int)shot->y;
-        if (shot->kind == FL_TOWER_EMBER) {
-            /* A tumbling fire pot that sheds sparks behind it. */
-            float dx = shot->tx - shot->x;
-            float dy = shot->ty - shot->y;
-            float length = sqrtf(dx * dx + dy * dy);
-            if (length > 0.5f) {
-                dx /= length;
-                dy /= length;
-            }
-            for (int k = 1; k <= 3; ++k) {
-                int tx = px - (int)lroundf(dx * (float)(k * 5));
-                int ty = py - (int)lroundf(dy * (float)(k * 5))
-                         - (int)((model->tick + (unsigned)k) % 2u);
-                Color c = ((unsigned)k + model->tick / 2u) % 2u ? FL_PAPER : FL_INK;
-                DrawRectangle(tx, ty, 4 - k, 4 - k, c);
-            }
-            int frame = (int)((model->tick / 3u + (unsigned)i) % EMBER_FLAME_FRAMES);
-            draw_padded(s_assets.fx, s_assets.ember_pot[frame],
-                        (float)px - PROJECTILE_DRAW_SIZE / 2.0f,
-                        (float)py - PROJECTILE_DRAW_SIZE / 2.0f,
-                        PROJECTILE_DRAW_SIZE);
-            continue;
-        }
-        draw_padded(s_assets.fx, s_assets.projectile,
-                    (float)px - PROJECTILE_DRAW_SIZE / 2.0f,
-                    (float)py - PROJECTILE_DRAW_SIZE / 2.0f,
-                    PROJECTILE_DRAW_SIZE);
-    }
-}
-
 /* A cheap integer hash, so every bolt jags its own way frame to frame
  * without any state in the view. */
-static uint32_t jag_hash(uint32_t a)
+uint32_t jag_hash(uint32_t a)
 {
     a ^= a >> 16;
     a *= 0x7feb352du;
@@ -1082,7 +1096,7 @@ static void draw_beam(const fl_arc_t *arc, uint32_t tick)
 }
 
 /* A paper diamond in an ink case: one shard of the frost king's beam. */
-static void draw_shard(int x, int y, int r)
+void draw_shard(int x, int y, int r)
 {
     for (int dy = -r - 1; dy <= r + 1; ++dy) {
         int half = r + 1 - abs(dy);
@@ -1172,7 +1186,7 @@ static void draw_arcs(const fl_state_t *model)
         int frame = FL_ARC_TICKS - arc->ttl;
         if (frame >= 0 && frame < 6) {
             for (int k = 1; k < arc->count; ++k) {
-                draw_padded(s_assets.fx, s_assets.spark[frame],
+                draw_padded(fv_assets.fx, fv_assets.spark[frame],
                             (float)arc->x[k] - PROJECTILE_DRAW_SIZE / 2.0f,
                             (float)arc->y[k] - PROJECTILE_DRAW_SIZE / 2.0f,
                             PROJECTILE_DRAW_SIZE);
@@ -1225,7 +1239,7 @@ static void draw_zones(const fl_state_t *model)
             int fy = zone->y + (int)lroundf(sinf(angle) * (float)ry * 0.5f);
             int frame = (int)((model->tick / 3u + (unsigned)(k * 3 + i))
                               % EMBER_FLAME_FRAMES);
-            draw_padded(s_assets.fx, s_assets.ember_flame[frame],
+            draw_padded(fv_assets.fx, fv_assets.ember_flame[frame],
                         (float)fx - PROJECTILE_DRAW_SIZE / 2.0f,
                         (float)fy - PROJECTILE_DRAW_SIZE + 3.0f,
                         PROJECTILE_DRAW_SIZE);
@@ -1292,7 +1306,7 @@ static void draw_hud(const fl_state_t *model)
     draw_panel(FL_SKILL_BTN_X, FL_SKILL_BTN_Y, FL_SKILL_BTN_W, FL_SKILL_BTN_H,
                ready);
     if (ready) {
-        draw_padded(s_assets.icons, s_assets.icon_nova,
+        draw_padded(fv_assets.icons, fv_assets.icon_nova,
                     (float)(FL_SKILL_BTN_X + 1), (float)FL_SKILL_BTN_Y,
                     (float)ICON_DRAW_SIZE);
     } else if (hero_placed) {
@@ -1302,19 +1316,20 @@ static void draw_hud(const fl_state_t *model)
     /* The icons are shaded solids with paper highlights, so they read on
      * the ink bar without a plate. The cluster ends before the pause button. */
     const float icon_y = (float)(FL_HUD_Y + 2);
-    draw_padded(s_assets.icons, s_assets.icon_heart, 78.0f, icon_y,
+    draw_padded(fv_assets.icons, fv_assets.icon_heart, 78.0f, icon_y,
                 (float)ICON_DRAW_SIZE);
     DrawText(TextFormat("%u", (unsigned)model->lives), 106, 14, 16, FL_PAPER);
-    draw_padded(s_assets.icons, s_assets.icon_coin, 140.0f, icon_y,
+    draw_padded(fv_assets.icons, fv_assets.icon_coin, 140.0f, icon_y,
                 (float)ICON_DRAW_SIZE);
     DrawText(TextFormat("%u", (unsigned)model->gold), 168, 14, 16, FL_PAPER);
 
     /* Points read as a third resource so the run has a running tally. */
-    draw_padded(s_assets.icons, s_assets.icon_score, 212.0f, icon_y,
+    draw_padded(fv_assets.icons, fv_assets.icon_score, 212.0f, icon_y,
                 (float)ICON_DRAW_SIZE);
     DrawText(TextFormat("%lu", (unsigned long)model->score), 240, 14, 16, FL_PAPER);
 
-    DrawText("WAVE", 304, 8, 12, FL_PAPER);
+    fl_text_draw(fl_tr(FL_TXT_UI_HUD_WAVE), 304,
+                 fl_text_language() == FL_LANG_ZH ? 6 : 8, FL_FONT_SMALL, FL_PAPER);
     DrawText(TextFormat("%02u/%02u", (unsigned)model->wave,
                         (unsigned)fl_wave_count(model)),
              304, 20, 14, FL_PAPER);
@@ -1328,7 +1343,7 @@ static void draw_hud(const fl_state_t *model)
         draw_panel(FL_PAUSE_BTN_X + 16, FL_BTN_Y + 7, 7, 14, true);
     }
     draw_panel(FL_SPEED_BTN_X, FL_BTN_Y, FL_SPEED_BTN_W, FL_BTN_H, false);
-    draw_text_centered(TextFormat("%ux", (unsigned)model->speed),
+    draw_text_centered_engine(TextFormat("%ux", (unsigned)model->speed),
                        FL_SPEED_BTN_X + FL_SPEED_BTN_W / 2, FL_BTN_Y + 7, 16, FL_PAPER);
 }
 
@@ -1343,47 +1358,55 @@ static void draw_upgrade_panel(const fl_state_t *model)
     DrawRectangle(FL_PANEL_X, FL_PANEL_TOP, FL_PANEL_W, FL_PANEL_HEIGHT, FL_INK);
     DrawRectangle(FL_PANEL_X, FL_PANEL_TOP, FL_PANEL_W, 2, FL_PAPER);
 
-    const char *label = FL_TOWER_LABELS[tower->kind];
-    DrawText(label, FL_PANEL_X + 8, FL_PANEL_TOP + 5, 16, FL_PAPER);
-    int label_end = FL_PANEL_X + 8 + MeasureText(label, 16);
-    DrawText(TextFormat("LV%u", (unsigned)tower->level), label_end + 8,
-             FL_PANEL_TOP + 6, 14, FL_PAPER);
+    /* The top line: name and level, the numbers, the sell price. Every
+     * piece is centred on one baseline band whatever the language. */
+    const int line_mid = FL_PANEL_TOP + 12;
+    const char *label = tower_name(tower->kind);
+    int label_h = fl_text_height(FL_FONT_LARGE);
+    fl_text_draw(label, FL_PANEL_X + 8, line_mid - label_h / 2, FL_FONT_LARGE,
+                 FL_PAPER);
+    int label_end = FL_PANEL_X + 8 + fl_text_width(label, FL_FONT_LARGE);
+    int small_y = line_mid - fl_text_height(FL_FONT_SMALL) / 2;
+    const char *level = fl_fmt("LV%u", (unsigned)tower->level);
+    fl_text_draw(level, label_end + 6, small_y, FL_FONT_SMALL, FL_PAPER);
+    int numbers_x = label_end + 6 + fl_text_width(level, FL_FONT_SMALL) + 10;
 
     /* The numbers that matter for this kind of tower. */
     fl_tower_stats_t stat = fl_tower_stats(tower);
     const char *numbers;
     switch (tower->kind) {
     case FL_TOWER_STORM:
-        numbers = TextFormat("DMG %d  RNG %d  JUMPS %d", stat.damage,
-                             stat.range, stat.extra);
+        numbers = fl_trf(FL_TXT_UI_STAT_STORM, stat.damage, stat.range,
+                         stat.extra);
         break;
     case FL_TOWER_BARRACKS:
-        numbers = TextFormat("MEN %d  HP %d  DMG %d", stat.extra, stat.hp,
-                             stat.damage);
+        numbers = fl_trf(FL_TXT_UI_STAT_BARRACKS, stat.extra, stat.hp,
+                         stat.damage);
         break;
     case FL_TOWER_EMBER:
-        numbers = TextFormat("DMG %d  RNG %d  BURN %ds", stat.damage,
-                             stat.range, stat.extra / 30);
+        numbers = fl_trf(FL_TXT_UI_STAT_EMBER, stat.damage, stat.range,
+                         stat.extra / 30);
         break;
     default:
-        numbers = TextFormat("DMG %d  RNG %d  CD %d", stat.damage, stat.range,
-                             stat.cooldown);
+        numbers = fl_trf(FL_TXT_UI_STAT_DEFAULT, stat.damage, stat.range,
+                         (int)stat.cooldown);
         break;
     }
-    DrawText(numbers, label_end + 46, FL_PANEL_TOP + 6, 12, FL_PAPER);
-    DrawText(TextFormat("SELL %u", (unsigned)(tower->invested / 2)),
-             FL_PANEL_X + FL_PANEL_W - 78, FL_PANEL_TOP + 6, 12, FL_PAPER);
+    fl_text_draw(numbers, numbers_x, small_y, FL_FONT_SMALL, FL_PAPER);
+    const char *sell = fl_trf(FL_TXT_UI_SELL_N, (unsigned)(tower->invested / 2));
+    fl_text_draw(sell, FL_PANEL_X + FL_PANEL_W - 8 - fl_text_width(sell, FL_FONT_SMALL),
+                 small_y, FL_FONT_SMALL, FL_PAPER);
 
     if (tower->level >= FL_TOWER_LEVEL_COUNT) {
         /* Show what the tower ended up as instead of an empty panel. */
-        char line[64];
-        const char *first = fl_upgrade_name(tower->kind, 0,
-                                            fl_tower_option(tower, 0));
-        const char *second = fl_upgrade_name(tower->kind, 1,
-                                             fl_tower_option(tower, 1));
-        snprintf(line, sizeof(line), "%s + %s", first, second);
-        draw_text_centered(line, FL_VIEW_WIDTH / 2, FL_UPGRADE_CARD_Y + 18, 16,
-                           FL_PAPER);
+        const char *line = fl_fmt("%s + %s",
+                                  upgrade_name(tower->kind, 0,
+                                               fl_tower_option(tower, 0)),
+                                  upgrade_name(tower->kind, 1,
+                                               fl_tower_option(tower, 1)));
+        fl_text_draw_centered(line, FL_VIEW_WIDTH / 2,
+                              FL_UPGRADE_CARD_Y + 20 - label_h / 2,
+                              FL_FONT_LARGE, FL_PAPER);
         return;
     }
 
@@ -1395,10 +1418,12 @@ static void draw_upgrade_panel(const fl_state_t *model)
                      + i * (FL_UPGRADE_CARD_W + FL_UPGRADE_CARD_GAP);
         draw_panel(card_x, FL_UPGRADE_CARD_Y, FL_UPGRADE_CARD_W,
                    FL_UPGRADE_CARD_H, true);
-        DrawText(fl_upgrade_name(tower->kind, stage, i), card_x + 8,
-                 FL_UPGRADE_CARD_Y + 5, BUTTON_TEXT, FL_INK);
-        DrawText(TextFormat("LV%u", (unsigned)tower->level + 1), card_x + 8,
-                 FL_UPGRADE_CARD_Y + 27, 12, FL_INK);
+        fl_text_draw(upgrade_name(tower->kind, stage, i), card_x + 8,
+                     FL_UPGRADE_CARD_Y + 4, FL_FONT_LARGE, FL_INK);
+        fl_text_draw(fl_fmt("LV%u", (unsigned)tower->level + 1), card_x + 8,
+                     FL_UPGRADE_CARD_Y + FL_UPGRADE_CARD_H - 4
+                     - fl_text_height(FL_FONT_SMALL),
+                     FL_FONT_SMALL, FL_INK);
         const char *price = TextFormat("%u", (unsigned)cost);
         int price_w = MeasureText(price, BUTTON_TEXT);
         int price_x = card_x + FL_UPGRADE_CARD_W - 8 - price_w;
@@ -1412,15 +1437,13 @@ static void draw_upgrade_panel(const fl_state_t *model)
     }
 }
 
-/* A plate button: paper with ink text, or ink with a paper frame when it is
- * not on offer. */
-static void draw_button(int x, int y, int w, int h, const char *label,
-                        bool enabled, bool beckon, uint32_t tick)
+void draw_button(int x, int y, int w, int h, const char *label,
+                 bool enabled, bool beckon, uint32_t tick)
 {
-    int text_y = y + (h - BUTTON_TEXT_HEIGHT) / 2;
+    int text_y = y + (h - fl_text_height(FL_FONT_LARGE)) / 2;
     if (!enabled) {
         DrawRectangleLines(x, y, w, h, FL_PAPER);
-        draw_text_centered(label, x + w / 2, text_y, BUTTON_TEXT, FL_PAPER);
+        fl_text_draw_centered(label, x + w / 2, text_y, FL_FONT_LARGE, FL_PAPER);
         return;
     }
     draw_panel(x, y, w, h, true);
@@ -1428,7 +1451,7 @@ static void draw_button(int x, int y, int w, int h, const char *label,
         /* The button the player most likely wants breathes a second frame. */
         DrawRectangleLines(x - 3, y - 3, w + 6, h + 6, FL_PAPER);
     }
-    draw_text_centered(label, x + w / 2, text_y, BUTTON_TEXT, FL_INK);
+    fl_text_draw_centered(label, x + w / 2, text_y, FL_FONT_LARGE, FL_INK);
 }
 
 static void draw_panel_buttons(const char *const labels[FL_PANEL_BTN_COUNT],
@@ -1442,18 +1465,18 @@ static void draw_panel_buttons(const char *const labels[FL_PANEL_BTN_COUNT],
     }
 }
 
-/* Three stars in a row: earned ones are the faceted star, the rest an empty
- * frame where the star would sit. */
+/* Three stars in a row: earned ones are the faceted star, the rest the
+ * outline of the star that would sit there. */
 static void draw_star_row(int x, int y, int stars)
 {
     for (int i = 0; i < 3; ++i) {
         int sx = x + i * 34;
         if (i < stars) {
-            draw_padded(s_assets.icons, s_assets.icon_star, (float)(sx - 1),
+            draw_padded(fv_assets.icons, fv_assets.icon_star, (float)(sx - 1),
                         (float)y, (float)ICON_DRAW_SIZE);
         } else {
-            DrawRectangleLines(sx + 4, y + 4, ICON_DRAW_SIZE - 8,
-                               ICON_DRAW_SIZE - 8, FL_PAPER);
+            draw_star(sx + ICON_DRAW_SIZE / 2 - 1, y + ICON_DRAW_SIZE / 2 + 1,
+                      11, false);
         }
     }
 }
@@ -1467,61 +1490,64 @@ static void draw_overlay(const fl_state_t *model)
      * running into the four cut corners. */
     DrawRectangle(64, 88, 352, 304, FL_INK);
     DrawRectangleLines(64, 88, 352, 304, FL_PAPER);
+    DrawRectangleLines(68, 92, 344, 296, FL_PAPER);
     bool won = model->phase == FL_PHASE_WON;
-    const char *title = won ? "HOLD SECURED" : "THE GATE FALLS";
-    draw_text_centered(title, FL_VIEW_WIDTH / 2, 104, 28, FL_PAPER);
-    draw_text_centered(current_level(model)->name, FL_VIEW_WIDTH / 2, 136, 16,
-                       FL_PAPER);
+    const char *title = fl_tr(won ? FL_TXT_UI_WON_TITLE : FL_TXT_UI_LOST_TITLE);
+    fl_text_draw_centered(title, FL_VIEW_WIDTH / 2, 100, FL_FONT_HUGE, FL_PAPER);
+    fl_text_draw_centered(level_name(model->level), FL_VIEW_WIDTH / 2, 138,
+                          FL_FONT_LARGE, FL_PAPER);
 
     /* The points total, with the breakdown underneath it. */
-    draw_text_centered(TextFormat("%lu", (unsigned long)model->score),
-                       FL_VIEW_WIDTH / 2, 160, 32, FL_PAPER);
-    draw_star_row(FL_VIEW_WIDTH / 2 - 48, 198, fl_star_rating(model));
+    draw_text_centered_engine(TextFormat("%lu", (unsigned long)model->score),
+                              FL_VIEW_WIDTH / 2, 162, 32, FL_PAPER);
+    draw_star_row(FL_VIEW_WIDTH / 2 - 48, 196, fl_star_rating(model));
 
-    draw_text_centered(TextFormat("KILLS %u      WAVE BONUS %lu",
-                                  (unsigned)model->kills,
-                                  (unsigned long)model->score_waves),
-                       FL_VIEW_WIDTH / 2, 236, 14, FL_PAPER);
-    draw_text_centered(TextFormat("LIVES %u      BONUS %lu",
-                                  (unsigned)model->lives,
-                                  (unsigned long)model->score_bonus),
-                       FL_VIEW_WIDTH / 2, 258, 14, FL_PAPER);
+    fl_text_draw_centered(fl_trf(FL_TXT_UI_END_KILLS, (unsigned)model->kills,
+                                 (unsigned long)model->score_waves),
+                          FL_VIEW_WIDTH / 2, 234, FL_FONT_SMALL, FL_PAPER);
+    fl_text_draw_centered(fl_trf(FL_TXT_UI_END_LIVES, (unsigned)model->lives,
+                                 (unsigned long)model->score_bonus),
+                          FL_VIEW_WIDTH / 2, 254, FL_FONT_SMALL, FL_PAPER);
     /* The wave counter steps past the last wave once the run is won. */
     unsigned waves = (unsigned)fl_wave_count(model);
     unsigned shown_wave = (unsigned)model->wave;
     if (shown_wave > waves) {
         shown_wave = waves;
     }
-    draw_text_centered(TextFormat("WAVE %02u/%02u      BEST %lu", shown_wave,
-                                  waves,
-                                  (unsigned long)model->level_best[model->level]),
-                       FL_VIEW_WIDTH / 2, 286, 14, FL_PAPER);
+    fl_text_draw_centered(fl_trf(FL_TXT_UI_END_WAVE, shown_wave, waves,
+                                 (unsigned long)model->level_best[model->level]),
+                          FL_VIEW_WIDTH / 2, 274, FL_FONT_SMALL, FL_PAPER);
 
-    /* Map, retry, and - after a win, when there is one - the next stage. */
-    bool has_next = won && model->level + 1 < fl_level_count();
+    /* Map, retry, and after a win either the next stage or, after the last
+     * one, the ending. */
+    bool last = model->level + 1 >= fl_level_count();
+    bool has_next = won && !last;
 
     /* The reward for pushing on: the tower the next stage brings, its
      * portrait on a paper plate beside the news. */
     fl_tower_kind_t fresh = has_next ? fl_new_tower((uint8_t)(model->level + 1))
                                      : FL_TOWER_NONE;
     if (fresh != FL_TOWER_NONE) {
-        const char *news = TextFormat("NEXT STAGE UNLOCKS  %s",
-                                      FL_TOWER_LABELS[fresh]);
-        int w = MeasureText(news, 12) + ICON_DRAW_SIZE + 14;
+        const char *news = fl_trf(FL_TXT_UI_END_UNLOCK, tower_name(fresh));
+        int w = fl_text_width(news, FL_FONT_SMALL) + ICON_DRAW_SIZE + 14;
         int x = FL_VIEW_WIDTH / 2 - w / 2;
         int blink = (model->tick / 20u) % 2u == 0u;
-        DrawRectangle(x - 4, 300, w + 8, 28, blink ? FL_PAPER : FL_INK);
-        DrawRectangleLines(x - 4, 300, w + 8, 28, FL_PAPER);
-        DrawCircle(x + ICON_DRAW_SIZE / 2, 314, ICON_DRAW_SIZE / 2.0f, FL_INK);
-        draw_padded(s_assets.icons, s_assets.cards[fresh], (float)x, 300.0f,
+        DrawRectangle(x - 4, 296, w + 8, 28, blink ? FL_PAPER : FL_INK);
+        DrawRectangleLines(x - 4, 296, w + 8, 28, FL_PAPER);
+        DrawCircle(x + ICON_DRAW_SIZE / 2, 310, ICON_DRAW_SIZE / 2.0f, FL_INK);
+        draw_padded(fv_assets.icons, fv_assets.cards[fresh], (float)x, 296.0f,
                     (float)ICON_DRAW_SIZE);
-        DrawText(news, x + ICON_DRAW_SIZE + 8, 308, 12,
-                 blink ? FL_INK : FL_PAPER);
+        fl_text_draw(news, x + ICON_DRAW_SIZE + 8,
+                     310 - fl_text_height(FL_FONT_SMALL) / 2, FL_FONT_SMALL,
+                     blink ? FL_INK : FL_PAPER);
     }
-    static const char *const labels[FL_PANEL_BTN_COUNT] = {"MAP", "RETRY", "NEXT"};
-    const bool enabled[FL_PANEL_BTN_COUNT] = {true, true, has_next};
+    const char *labels[FL_PANEL_BTN_COUNT] = {
+        fl_tr(FL_TXT_UI_BTN_MAP), fl_tr(FL_TXT_UI_BTN_RETRY),
+        fl_tr(won && last ? FL_TXT_UI_BTN_ENDING : FL_TXT_UI_BTN_NEXT),
+    };
+    const bool enabled[FL_PANEL_BTN_COUNT] = {true, true, won};
     draw_panel_buttons(labels, enabled,
-                       has_next ? FL_PANEL_BTN_NEXT : FL_PANEL_BTN_RETRY,
+                       won ? FL_PANEL_BTN_NEXT : FL_PANEL_BTN_RETRY,
                        model->tick);
 }
 
@@ -1533,13 +1559,18 @@ static void draw_pause(const fl_state_t *model)
     }
     DrawRectangle(64, 200, 352, 192, FL_INK);
     DrawRectangleLines(64, 200, 352, 192, FL_PAPER);
-    draw_text_centered("PAUSED", FL_VIEW_WIDTH / 2, 224, 28, FL_PAPER);
-    draw_text_centered(current_level(model)->name, FL_VIEW_WIDTH / 2, 260, 16,
-                       FL_PAPER);
-    draw_text_centered(TextFormat("WAVE %02u/%02u", (unsigned)model->wave,
-                                  (unsigned)fl_wave_count(model)),
-                       FL_VIEW_WIDTH / 2, 286, 14, FL_PAPER);
-    static const char *const labels[FL_PANEL_BTN_COUNT] = {"MAP", "RETRY", "RESUME"};
+    DrawRectangleLines(68, 204, 344, 184, FL_PAPER);
+    fl_text_draw_centered(fl_tr(FL_TXT_UI_PAUSED), FL_VIEW_WIDTH / 2, 218,
+                          FL_FONT_HUGE, FL_PAPER);
+    fl_text_draw_centered(level_name(model->level), FL_VIEW_WIDTH / 2, 258,
+                          FL_FONT_LARGE, FL_PAPER);
+    fl_text_draw_centered(fl_trf(FL_TXT_UI_WAVE_OF, (unsigned)model->wave,
+                                 (unsigned)fl_wave_count(model)),
+                          FL_VIEW_WIDTH / 2, 284, FL_FONT_SMALL, FL_PAPER);
+    const char *labels[FL_PANEL_BTN_COUNT] = {
+        fl_tr(FL_TXT_UI_BTN_MAP), fl_tr(FL_TXT_UI_BTN_RETRY),
+        fl_tr(FL_TXT_UI_BTN_RESUME),
+    };
     const bool enabled[FL_PANEL_BTN_COUNT] = {true, true, true};
     draw_panel_buttons(labels, enabled, FL_PANEL_BTN_NEXT, model->tick);
 }
@@ -1615,7 +1646,7 @@ static void draw_node(const fl_state_t *model, uint8_t i)
     /* A paper plate under the token lifts it off busy ground. */
     DrawCircle(node.x, node.y + bob, 17, FL_PAPER);
     DrawCircleLines(node.x, node.y + bob, 18, FL_INK);
-    draw_padded(s_assets.props, open ? s_assets.nodes[i] : s_assets.node_locked,
+    draw_padded(fv_assets.props, open ? fv_assets.nodes[i] : fv_assets.node_locked,
                 (float)(node.x - 20), (float)(node.y - 18 + bob), PAD_DRAW_SIZE);
     if (picked) {
         /* A banner planted beside the token, the same cloth as the gate's. */
@@ -1624,7 +1655,7 @@ static void draw_node(const fl_state_t *model, uint8_t i)
         DrawRectangle(pole_x - 1, pole_top, 3, 26, FL_PAPER);
         DrawRectangle(pole_x, pole_top + 1, 1, 24, FL_INK);
         int flag = (int)((model->tick / 5u) % CASTLE_FLAG_FRAMES);
-        draw_padded(s_assets.castle_fx, s_assets.flag[flag],
+        draw_padded(fv_assets.castle_fx, fv_assets.flag[flag],
                     (float)(pole_x - (int)CASTLE_FX_SIZE + 2),
                     (float)(pole_top - 2), CASTLE_FX_SIZE);
     }
@@ -1647,42 +1678,48 @@ static void draw_menu_card(const fl_state_t *model)
     DrawRectangleLines(x, y, FL_MENU_CARD_W, FL_MENU_CARD_H, FL_PAPER);
     DrawRectangle(x, y + 2, FL_MENU_CARD_W, 1, FL_PAPER);
 
-    draw_padded(s_assets.props, s_assets.nodes[i], (float)(x + 6),
+    draw_padded(fv_assets.props, fv_assets.nodes[i], (float)(x + 6),
                 (float)(y + 10), PAD_DRAW_SIZE);
-    DrawText(TextFormat("STAGE %u", (unsigned)i + 1), x + 52, y + 8, 12, FL_PAPER);
-    DrawText(level->name, x + 52, y + 22, 16, FL_PAPER);
+    /* Three lines: the stage number, its name, and its record or news. */
+    bool zh = fl_text_language() == FL_LANG_ZH;
+    int line1 = y + (zh ? 4 : 8);
+    int line2 = y + (zh ? 18 : 21);
+    int line3 = y + (zh ? 47 : 44);
+    fl_text_draw(fl_trf(FL_TXT_UI_STAGE_N, (unsigned)i + 1), x + 52, line1,
+                 FL_FONT_SMALL, FL_PAPER);
+    fl_text_draw(level_name(i), x + 52, line2, FL_FONT_LARGE, FL_PAPER);
+    int mid3 = line3 + fl_text_height(FL_FONT_SMALL) / 2;
     if (model->level_stars[i] > 0) {
         for (int s = 0; s < 3; ++s) {
-            int px = x + 54 + s * 10;
-            int py = y + 46;
+            int px = x + 58 + s * 13;
             if (s < model->level_stars[i]) {
-                DrawRectangle(px, py, 6, 6, FL_PAPER);
+                draw_star(px, mid3, 5, true);
             } else {
-                DrawRectangleLines(px, py, 6, 6, FL_PAPER);
+                draw_star(px, mid3, 5, false);
             }
         }
-        DrawText(TextFormat("BEST %lu", (unsigned long)model->level_best[i]),
-                 x + 90, y + 44, 12, FL_PAPER);
+        fl_text_draw(fl_trf(FL_TXT_UI_BEST_N, (unsigned long)model->level_best[i]),
+                     x + 98, line3, FL_FONT_SMALL, FL_PAPER);
     } else {
-        DrawText(TextFormat("%u WAVES", (unsigned)level->wave_count),
-                 x + 52, y + 44, 12, FL_PAPER);
+        const char *waves = fl_trf(FL_TXT_UI_WAVES_N, (unsigned)level->wave_count);
+        fl_text_draw(waves, x + 52, line3, FL_FONT_SMALL, FL_PAPER);
         /* A stage that brings a new tower says so, portrait and all. */
         fl_tower_kind_t fresh = fl_new_tower(i);
         if (fresh != FL_TOWER_NONE) {
-            int nx = x + 52 + MeasureText("00 WAVES", 12) + 12;
-            DrawText(TextFormat("NEW %s", FL_TOWER_LABELS[fresh]), nx + 24,
-                     y + 44, 12, FL_PAPER);
-            draw_padded(s_assets.icons, s_assets.cards[fresh], (float)(nx - 2),
-                        (float)(y + 36), (float)ICON_DRAW_SIZE);
+            int nx = x + 52 + fl_text_width(waves, FL_FONT_SMALL) + 12;
+            draw_padded(fv_assets.icons, fv_assets.cards[fresh], (float)(nx - 2),
+                        (float)(mid3 - ICON_DRAW_SIZE / 2), (float)ICON_DRAW_SIZE);
+            fl_text_draw(fl_trf(FL_TXT_UI_NEW_TOWER, tower_name(fresh)), nx + 26,
+                         line3, FL_FONT_SMALL, FL_PAPER);
         }
     }
-    draw_button(FL_MENU_GO_X, FL_MENU_GO_Y, FL_MENU_GO_W, FL_MENU_GO_H, "FIGHT",
-                true, true, model->tick);
+    draw_button(FL_MENU_GO_X, FL_MENU_GO_Y, FL_MENU_GO_W, FL_MENU_GO_H,
+                fl_tr(FL_TXT_UI_BTN_FIGHT), true, true, model->tick);
 }
 
 static void draw_menu(const fl_state_t *model)
 {
-    draw_full(s_assets.terrain, s_assets.campaign_map, 0.0f, 0.0f, 480.0f);
+    draw_full(fv_assets.terrain, fv_assets.campaign_map, 0.0f, 0.0f, 480.0f);
 
     /* Snow drifts across the map the way it does over a battlefield. */
     for (int i = 0; i < 18; ++i) {
@@ -1708,6 +1745,49 @@ static void draw_menu(const fl_state_t *model)
         draw_node(model, i);
     }
     draw_menu_card(model);
+    draw_button(FL_MENU_BACK_X, FL_MENU_BACK_Y, FL_MENU_BACK_W, FL_MENU_BACK_H,
+                fl_tr(FL_TXT_UI_BTN_MENU), true, false, model->tick);
+}
+
+/* The battle: the map and its life, the actors and their effects shaken
+ * together, then the controls and banners steady on top. */
+static void draw_battle(const fl_state_t *model)
+{
+    fx_update(model);
+    screens_update_battle(model);
+    int dx, dy;
+    fx_shake_offset(&dx, &dy);
+    bool shaking = dx != 0 || dy != 0;
+    if (shaking) {
+        Camera2D camera = {0};
+        camera.offset = (Vector2){(float)dx, (float)dy};
+        camera.zoom = 1.0f;
+        BeginMode2D(camera);
+    }
+    draw_background(model);
+    scenery_draw_under(model);
+    draw_world_motion(model);
+    draw_build_pads(model);
+    fx_draw_ground(model);
+    draw_zones(model);
+    draw_selection_reach(model);
+    draw_actors(model);
+    fx_draw_status(model);
+    fx_draw_projectiles(model);
+    draw_arcs(model);
+    fx_draw_air(model);
+    scenery_draw_over(model);
+    if (shaking) {
+        EndMode2D();
+    }
+    draw_ring(model);
+    draw_hud(model);
+    if (model->selected_tower >= 0) {
+        draw_upgrade_panel(model);
+    }
+    screens_draw_battle(model);
+    draw_pause(model);
+    draw_overlay(model);
 }
 
 void frostline_view_draw(const fl_state_t *model)
@@ -1715,23 +1795,26 @@ void frostline_view_draw(const fl_state_t *model)
     if (!model) {
         return;
     }
-    if (model->phase == FL_PHASE_MENU) {
+    fl_text_set_language(model->settings.lang);
+    switch (model->phase) {
+    case FL_PHASE_TITLE:
+        fx_reset();
+        screens_draw_title(model);
+        return;
+    case FL_PHASE_SETTINGS:
+        fx_reset();
+        screens_draw_settings(model);
+        return;
+    case FL_PHASE_ENDING:
+        fx_reset();
+        screens_draw_ending(model);
+        return;
+    case FL_PHASE_MENU:
+        fx_reset();
         draw_menu(model);
         return;
+    default:
+        draw_battle(model);
+        return;
     }
-    draw_background(model);
-    draw_world_motion(model);
-    draw_build_pads(model);
-    draw_zones(model);
-    draw_selection_reach(model);
-    draw_actors(model);
-    draw_projectiles(model);
-    draw_arcs(model);
-    draw_ring(model);
-    draw_hud(model);
-    if (model->selected_tower >= 0) {
-        draw_upgrade_panel(model);
-    }
-    draw_pause(model);
-    draw_overlay(model);
 }

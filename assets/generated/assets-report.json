@@ -2,14 +2,14 @@
   "files": [
     {
       "alpha_mode": "opaque",
-      "bytes": 1843284,
+      "bytes": 4147364,
       "file": "terrain.atlas",
       "format": "msa1",
-      "frames": 4,
-      "height": 960,
+      "frames": 9,
+      "height": 1440,
       "type": "atlas",
       "variants": 0,
-      "width": 960
+      "width": 1440
     },
     {
       "alpha_mode": "binary",
@@ -98,6 +98,17 @@
       "type": "atlas",
       "variants": 0,
       "width": 256
+    },
+    {
+      "alpha_mode": "opaque",
+      "bytes": 921652,
+      "file": "title.atlas",
+      "format": "msa1",
+      "frames": 2,
+      "height": 480,
+      "type": "atlas",
+      "variants": 0,
+      "width": 960
     },
     {
       "bits": 16,
@@ -322,9 +333,25 @@
       "rate": 24000,
       "samples": 558171,
       "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 4,
+      "bytes": 367224,
+      "file": "music_title.sound",
+      "rate": 24000,
+      "samples": 734400,
+      "type": "audio_ima_adpcm"
+    },
+    {
+      "bits": 4,
+      "bytes": 187681,
+      "file": "music_boss.sound",
+      "rate": 24000,
+      "samples": 375314,
+      "type": "audio_ima_adpcm"
     }
   ],
-  "limit_bytes": 8388608,
+  "limit_bytes": 12582912,
   "schema": "mosaico-assets-report/v1",
-  "total_bytes": 4303617
+  "total_bytes": 8084254
 }

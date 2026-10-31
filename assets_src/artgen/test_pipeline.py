@@ -115,6 +115,19 @@ class TestAssetPipeline(unittest.TestCase):
         self.assertEqual(sprites.ICON_ATLAS_CELL, sprites.ICON_CELL + 4)
         self.assertEqual(sprites.CASTLE_FX_ATLAS_CELL, sprites.CASTLE_FX_CELL + 4)
 
+    def test_the_device_can_register_and_embed_every_asset(self):
+        """The firmware embeds every packed file and registers it in a fixed
+        table; a file past the table's end fails silently and the game exits
+        at start-up. The native build also packs under a 10 MiB limit."""
+        packed = [p for p in self.output.iterdir()
+                  if p.suffix in (".atlas", ".sound", ".map", ".wall", ".jpg")]
+        capacity = 32
+        for line in (PROJECT / "sdkconfig.defaults").read_text().splitlines():
+            if line.startswith("CONFIG_RAYLIB_LITE_MAX_ASSETS="):
+                capacity = int(line.split("=", 1)[1])
+        self.assertLessEqual(len(packed), capacity)
+        self.assertLessEqual(sum(p.stat().st_size for p in packed), 10 * 1024 * 1024)
+
     def test_generated_sources_contain_only_ink_paper_and_transparent(self):
         from artgen.canvas import INK_RGB, PAPER_RGB
         allowed = {(0, 0, 0, 0), INK_RGB + (255,), PAPER_RGB + (255,)}

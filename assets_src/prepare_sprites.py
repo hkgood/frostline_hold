@@ -21,6 +21,7 @@ from artgen.ai_terrain import (  # noqa: E402
     build_campaign_background, build_level_background,
 )
 from artgen.canvas import Canvas  # noqa: E402
+from artgen import title_art  # noqa: E402
 
 MAP_SIZE = 480
 
@@ -48,9 +49,12 @@ def main():
     maps = [(f"map_{level['key']}", build_level_background(level))
             for level in campaign.LEVELS]
     maps.append(("map_campaign", build_campaign_background()))
-    columns = 2
+    # The packer emits whole rows, so a spare cell would cost a blank 480x480
+    # frame of RAM: pick the widest column count (up to 3) that fills the grid.
+    columns = next((c for c in (3, 2) if len(maps) % c == 0), 3)
     rows = (len(maps) + columns - 1) // columns
     sheet = Canvas(MAP_SIZE * columns, MAP_SIZE * rows)
+    sheet.fill_rect(0, 0, sheet.width, sheet.height, 255)
     for index, (_name, canvas) in enumerate(maps):
         sheet.blit(canvas, (index % columns) * MAP_SIZE,
                    (index // columns) * MAP_SIZE)
@@ -61,6 +65,22 @@ def main():
         "output_cell": MAP_SIZE, "output_columns": columns,
         "alpha_mode": "opaque",
         "frames": [{"name": name} for name, _canvas in maps],
+        "animations": [],
+    }, indent=2) + "\n", encoding="utf-8")
+
+    # The title sheet: the fortress by night, and at dawn for the ending.
+    plates = [("title_backdrop", title_art.build_title_backdrop()),
+              ("ending_backdrop", title_art.build_ending_backdrop())]
+    sheet = Canvas(MAP_SIZE * len(plates), MAP_SIZE)
+    for index, (_name, canvas) in enumerate(plates):
+        sheet.blit(canvas, index * MAP_SIZE, 0)
+    sheet.to_image().save(HERE / "title_atlas_source.png")
+    (HERE / "atlas_title.json").write_text(json.dumps({
+        "image": "title_atlas_source.png",
+        "columns": len(plates), "rows": 1,
+        "output_cell": MAP_SIZE, "output_columns": len(plates),
+        "alpha_mode": "opaque",
+        "frames": [{"name": name} for name, _canvas in plates],
         "animations": [],
     }, indent=2) + "\n", encoding="utf-8")
 

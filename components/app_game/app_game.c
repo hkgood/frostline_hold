@@ -24,7 +24,7 @@ app_game_err_t app_game_create(const app_game_config_t *config, app_game_handle_
     }
     game->config = *config;
     fl_state_reset(&game->model, 0x464C5354u);
-    fl_state_open_menu(&game->model);
+    fl_state_open_title(&game->model);
     *ret_handle = game;
     return APP_GAME_OK;
 }
@@ -43,14 +43,17 @@ void app_game_reset(app_game_handle_t game)
         game->state = (app_game_snapshot_t) {
             0
         };
-        /* A reset starts over from the map but keeps what was won. */
+        /* A reset starts over from the title but keeps what was won and
+         * what was set. */
         uint8_t stars[FL_MAX_LEVELS];
         uint32_t best[FL_MAX_LEVELS];
         memcpy(stars, game->model.level_stars, sizeof(stars));
         memcpy(best, game->model.level_best, sizeof(best));
+        fl_settings_t settings = game->model.settings;
         fl_state_reset(&game->model, 0x464C5354u);
         app_game_set_progress(game, stars, best, FL_MAX_LEVELS);
-        fl_state_open_menu(&game->model);
+        game->model.settings = settings;
+        fl_state_open_title(&game->model);
     }
 }
 
@@ -67,6 +70,19 @@ void app_game_set_progress(app_game_handle_t game, const uint8_t *stars,
     if (game->model.phase == FL_PHASE_MENU) {
         fl_state_open_menu(&game->model);   /* re-aim at the newest level */
     }
+}
+
+void app_game_set_settings(app_game_handle_t game, const fl_settings_t *settings)
+{
+    if (!game || !settings) {
+        return;
+    }
+    fl_settings_t s = *settings;
+    s.music = s.music > FL_VOLUME_MAX ? FL_VOLUME_MAX : s.music;
+    s.sound = s.sound > FL_VOLUME_MAX ? FL_VOLUME_MAX : s.sound;
+    s.haptics = s.haptics ? 1 : 0;
+    s.lang = s.lang ? 1 : 0;
+    game->model.settings = s;
 }
 
 void app_game_set_paused(app_game_handle_t game, bool paused)

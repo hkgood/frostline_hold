@@ -23,6 +23,11 @@ void frostline_view_shutdown(void);
 bool frostline_view_ready(void);
 /** Draw one full frame of the current game state. */
 void frostline_view_draw(const fl_state_t *model);
+/** The enemies already introduced, one bit per kind. The view shows a card
+ * for every kind the first time it walks on; the runtime keeps the mask in
+ * the record. */
+void frostline_view_set_seen_enemies(uint32_t mask);
+uint32_t frostline_view_seen_enemies(void);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary
 #include <stdio.h>
+#include <string.h>
 #include "include/app_game_runtime.h"
 /* Engine Host accepts source lists, not component include paths. Reference only
  * the model's public header so these translation units work on both targets. */
@@ -18,6 +19,9 @@ typedef struct {
     frostline_record_t record;
     frostline_audio_t audio;
     uint16_t recorded_run; /* run_serial of the last run written down */
+    uint16_t settings_serial; /* the model's settings_serial last stored */
+    uint16_t reset_serial;    /* the model's reset_serial last acted on */
+    uint32_t seen_enemies;    /* the introductions last stored */
     bool pointer_held;  /* one contact owns the pointer, whatever its id */
     int32_t pointer_track;
 } host_state_t;
@@ -45,7 +49,23 @@ static int initialize(void *value, const char *asset_root)
     frostline_record_load(&state->record);
     app_game_set_progress(state->game, state->record.stars,
                           state->record.best_score, FROSTLINE_RECORD_LEVELS);
+    fl_settings_t settings = fl_default_settings();
+    if (state->record.has_settings) {
+        settings.music = state->record.music;
+        settings.sound = state->record.sound;
+        settings.haptics = state->record.haptics;
+        settings.lang = state->record.lang;
+    }
+    app_game_set_settings(state->game, &settings);
+    state->seen_enemies = state->record.seen_enemies;
+    frostline_view_set_seen_enemies(state->seen_enemies);
     frostline_audio_init(&state->audio);
+    fl_state_t model;
+    app_game_get_model(state->game, &model);
+    frostline_audio_configure(&state->audio, model.settings.music,
+                              model.settings.sound, model.settings.haptics != 0);
+    state->settings_serial = model.settings_serial;
+    state->reset_serial = model.reset_serial;
     InitWindow(GAME_WIDTH, GAME_HEIGHT, GAME_NAME);
     SetTargetFPS(GAME_TICK_HZ);
     return 0;
@@ -104,6 +124,67 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
     }
 }
 
+/* Which theme the screen calls for: the title's outside battle, the boss
+ * track while a boss walks the road, the battle drum during a wave. */
+static uint8_t music_for(const fl_state_t *model)
+{
+    switch (model->phase) {
+    case FL_PHASE_TITLE:
+    case FL_PHASE_MENU:
+    case FL_PHASE_SETTINGS:
+    case FL_PHASE_ENDING:
+        return FL_MUSIC_TITLE;
+    case FL_PHASE_WAVE:
+        for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+            const fl_enemy_t *enemy = &model->enemies[i];
+            if (enemy->alive && (enemy->behaviour == FL_BEHAVIOUR_WYRM
+                                 || enemy->behaviour == FL_BEHAVIOUR_KING)) {
+                return FL_MUSIC_BOSS;
+            }
+        }
+        return FL_MUSIC_BATTLE;
+    default:
+        return FL_MUSIC_NONE;
+    }
+}
+
+/* Keep the record in step with what the player changed: settings, a wiped
+ * campaign, the enemies introduced so far. */
+static void sync_record(host_state_t *state, const fl_state_t *model)
+{
+    bool dirty = false;
+    if (model->settings_serial != state->settings_serial) {
+        state->settings_serial = model->settings_serial;
+        state->record.music = model->settings.music;
+        state->record.sound = model->settings.sound;
+        state->record.haptics = model->settings.haptics;
+        state->record.lang = model->settings.lang;
+        state->record.has_settings = 1;
+        frostline_audio_configure(&state->audio, model->settings.music,
+                                  model->settings.sound,
+                                  model->settings.haptics != 0);
+        dirty = true;
+    }
+    if (model->reset_serial != state->reset_serial) {
+        state->reset_serial = model->reset_serial;
+        memset(state->record.best_score, 0, sizeof(state->record.best_score));
+        memset(state->record.stars, 0, sizeof(state->record.stars));
+        state->record.seen_enemies = 0;
+        state->seen_enemies = 0;
+        frostline_view_set_seen_enemies(0);
+        dirty = true;
+    }
+    uint32_t seen = frostline_view_seen_enemies();
+    if (seen != state->seen_enemies) {
+        state->seen_enemies = seen;
+        state->record.seen_enemies = seen;
+        dirty = true;
+    }
+    if (dirty) {
+        frostline_record_store(&state->record);
+    }
+}
+
 static void update(void *value)
 {
     host_state_t *state = value;
@@ -111,10 +192,12 @@ static void update(void *value)
     /* What the simulation did this frame drives the sound and the motor. */
     fl_state_t model;
     app_game_get_model(state->game, &model);
+    sync_record(state, &model);
     fl_audio_frame_t frame;
     frame.events = app_game_take_events(state->game);
     frame.tick = model.tick;
     frame.wave_active = (model.phase == FL_PHASE_WAVE) ? 1u : 0u;
+    frame.music = music_for(&model);
     frame.run_over = (model.phase == FL_PHASE_WON || model.phase == FL_PHASE_LOST)
                      ? 1u : 0u;
     frame.kill_kind = model.last_kill_kind;

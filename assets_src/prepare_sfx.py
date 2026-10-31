@@ -45,7 +45,7 @@ def render_sounds():
     for name, recipe in sfx.CATALOGUE.items():
         buffer = recipe()
         buffer.dc_block()
-        buffer.fade_out(0.02 if name == "music_battle" else 0.006)
+        buffer.fade_out(0.02 if name.startswith("music_") else 0.006)
         buffer.normalize(0.88)
         path = HERE / (name + ".wav")
         buffer.write_wav(path)

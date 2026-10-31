@@ -1,9 +1,9 @@
 {
   "image": "terrain_atlas_source.png",
-  "columns": 2,
-  "rows": 2,
+  "columns": 3,
+  "rows": 3,
   "output_cell": 480,
-  "output_columns": 2,
+  "output_columns": 3,
   "alpha_mode": "opaque",
   "frames": [
     {
@@ -14,6 +14,21 @@
     },
     {
       "name": "map_ridge"
+    },
+    {
+      "name": "map_mine"
+    },
+    {
+      "name": "map_glacier"
+    },
+    {
+      "name": "map_ruins"
+    },
+    {
+      "name": "map_falls"
+    },
+    {
+      "name": "map_citadel"
     },
     {
       "name": "map_campaign"
