@@ -1,65 +1,66 @@
-# frostline_hold
+<p align="center">
+  <img src="docs/media/title.gif" width="360" alt="Frostline Hold">
+</p>
 
-A minimal Raylib Lite game: the first frame is an empty black canvas. No example
-gameplay, atlas, sounds, asset generation pipeline or game resource partition is
-included. The shared native launcher presents the RGB565 frame through the selected
-ESP-Mosaico Board and supplies touch, Iris and first-frame health handling.
+<h1 align="center">霜线要塞 · Frostline Hold</h1>
 
-From the workspace root:
+<p align="center">
+  一款为 ESP-Mosaico 掌机打造的凛冬塔防游戏<br>
+  A winter tower defense for the ESP-Mosaico handheld
+</p>
+
+<p align="center"><a href="#中文">中文</a> · <a href="#english">English</a></p>
+
+| 战斗 · Battle | 首领 · Boss | 战役 · Campaign |
+| :---: | :---: | :---: |
+| <img src="docs/media/battle.gif" width="260"> | <img src="docs/media/boss.gif" width="260"> | <img src="docs/media/campaign.gif" width="260"> |
+
+---
+
+## 中文
+
+用双色版画风格守住冰原上的要塞：建塔、升级、召唤英雄，挡住一波又一波的怪物。
+
+- **8 个关卡**：从霜线山口一路打到冰封要塞，每张地图都有自己的场景动画。
+- **7 种防御塔**：箭塔、冰霜塔、投石塔、雷暴塔、符文塔、盾卫营、余烬塔，随关卡逐步解锁，每种都有两条升级路线。
+- **15 种敌人**：包括两个首领，矿洞巨蠕和冰封之王。
+- **英雄霜卫**：可以召唤上场，并释放冰霜新星。
+- **完整体验**：动态标题页、设置、结局动画、独立的标题和首领配乐、触感震动，中英双语，默认中文。
+
+### 运行
+
+需要 [ESP-Mosaic](https://github.com/esp-mosaico/esp-mosaico-vibe) 工作区，把本项目放在 `projects/frostline_hold`，然后在工作区根目录运行：
 
 ```sh
-python mosaico.py game sim --project projects/frostline_hold
-python mosaico.py game sim --project projects/frostline_hold --headless --frames 120
-python mosaico.py game build --project projects/frostline_hold
-python mosaico.py iris system-update --project projects/frostline_hold
+python mosaico.py game sim --project projects/frostline_hold            # 浏览器模拟器
+python mosaico.py iris system-update --project projects/frostline_hold  # 编译并安装到设备
 ```
 
-Run `python mosaico.py recover` before first installation on a blank or unverified
-device. New applications, changed layouts or external resources use
-`iris system-update`. The immutable Vibe Mode partitions and OTA routing are
-already configured; the engine starts Iris and accepts the image after its first
-frame. USB High-Speed remains owned by Iris. Physical input/display behavior
-still requires device validation after Host checks.
+开发说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-- `components/app_game`: pure C state and gameplay rules, no graphics dependency.
-- `components/app_game_runtime`: Engine input/lifecycle adapter, rendering and JSON.
-- `components/app_game_runtime/private/game_config.h`: identity, pixel dimensions
-  and tick frequency; never included by another component.
-- `main/game_entry.c`: selects the adapter for the unchanged Engine module ABI.
-- `game.sim.json`: explicit list of the same sources used by the Host module.
+---
 
-Dependencies flow `main -> app_game_runtime -> app_game`, with the Engine as a
-platform dependency of the runtime. The model never depends on its caller or on
-rendering. Public headers live under each component's `include/`; internal state
-and configuration stay private. Component READMEs document contracts and usage.
+## English
 
-Keep new application components cohesive and prefixed `app_`; keep dependencies
-acyclic and entry points limited to composition/startup. Exchange handles and
-value snapshots, never extern business globals or private structures. Keep public
-API comments within three lines; put detailed contracts in the component README
-and document units/ranges beside fields. Add an
-abstraction only when a concrete independent responsibility requires it.
-Third-party code retains upstream names. Pins and workspace overrides live in
-`main/idf_component.yml` and the root CMake configuration. Apply local patches in
-a dedicated dependency checkout selected by `override_path`; never edit
-`managed_components/` in place. The prefix hook checks naming;
-code review and behavior tests establish architectural and API correctness.
+Hold a frozen fortress in a two-tone engraving style: build towers, upgrade them, call in a hero, and stop wave after wave.
 
-Git, editor and hook entry files stay at the root; format rules, project policy
-and hook setup instructions live in `tools/quality/`.
+- **8 levels**: from Frostline Pass to the Rime Citadel, each map with its own living scenery.
+- **7 towers**: Guard, Frost, Siege, Storm, Rune, Barracks and Ember. They unlock as you advance, each with two upgrade paths.
+- **15 enemies**: including two bosses, the Mine Wyrm and the Frost King.
+- **The Warden**: a hero you can summon, with a frost nova.
+- **The full package**: animated title screen, settings, an ending, separate title and boss themes, haptics, Chinese and English (Chinese by default).
 
-Host state exposes `phase`, `tick`, `pointer_x`, `pointer_y`, `pointer_down` and
-`state_hash` for automation. Touch/pointer input records coordinates without
-drawing a cursor. Pause/resume/reset are wired for Host controls and replay;
-there are no gameplay keyboard bindings yet. Add each new input behavior to the
-shared model and map it from the device and Host adapters.
+### Run
 
-Host needs a C compiler and Pillow, and uses the same C renderer as firmware.
-Firmware needs the pinned workspace ESP-IDF and initialized BSP, engine and utils.
-Before using any other Raylib API, check the engine's supported public headers.
+Needs an [ESP-Mosaic](https://github.com/esp-mosaico/esp-mosaico-vibe) workspace with this project at `projects/frostline_hold`. From the workspace root:
 
-## Licence
+```sh
+python mosaico.py game sim --project projects/frostline_hold            # browser simulator
+python mosaico.py iris system-update --project projects/frostline_hold  # build and install
+```
 
-Proprietary. Copyright (c) 2026 hkgood. All rights reserved - see `LICENSE`.
-No permission is granted to use, copy, modify or distribute this project
-without a written agreement from the copyright holder.
+Developer notes: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+---
+
+Proprietary. © 2026 hkgood. All rights reserved. See [LICENSE](LICENSE).
