@@ -1,0 +1,91 @@
+# Builds the itch.io packages for Windows, macOS and the web, and starts the
+# Windows and macOS builds once (--smoke-test) on real machines.
+#
+# Manual or on a version tag: macOS minutes are billed tenfold on a private
+# repository. The macOS package here is unsigned; sign and notarize locally
+# with platform/pc/scripts/package_mac.sh.
+name: pc-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  # The Engine revision the game is built against (the ESP-Mosaic submodule).
+  ENGINE_REPO: hkgood/raylib-lite-engine
+  ENGINE_SHA: 228f31f08dc1da1785bf3f261922a0e78d67aeb5
+  MOSAICO_ROOT: ${{ github.workspace }}/mosaico
+
+jobs:
+  windows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ENGINE_REPO }}
+          ref: ${{ env.ENGINE_SHA }}
+          path: mosaico/submodule/raylib-lite-engine
+      - run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - run: platform/pc/scripts/package_windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostline-hold-windows
+          path: dist/windows-itch/*.zip
+
+  windows-smoke:
+    needs: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frostline-hold-windows
+      - name: Start the game once
+        shell: pwsh
+        run: |
+          Expand-Archive -Path *.zip -DestinationPath out
+          $game = Start-Process -FilePath "out/Frostline Hold/Frostline Hold.exe" `
+            -ArgumentList "--smoke-test", "$PWD/frame.bmp" -PassThru -Wait
+          if ($game.ExitCode -ne 0 -or -not (Test-Path frame.bmp)) {
+            throw "smoke test failed with exit code $($game.ExitCode)"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-frame
+          path: frame.bmp
+
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ENGINE_REPO }}
+          ref: ${{ env.ENGINE_SHA }}
+          path: mosaico/submodule/raylib-lite-engine
+      - uses: mymindstorm/setup-emsdk@v14
+      - run: platform/pc/scripts/package_web.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostline-hold-web
+          path: dist/web/*.zip
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ENGINE_REPO }}
+          ref: ${{ env.ENGINE_SHA }}
+          path: mosaico/submodule/raylib-lite-engine
+      - run: platform/pc/scripts/package_mac.sh --unsigned
+      - name: Start the game once
+        run: |
+          "dist/mac-itch/Frostline Hold.app/Contents/MacOS/Frostline Hold" --smoke-test frame.bmp
+          test -s frame.bmp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostline-hold-mac-unsigned
+          path: dist/mac-itch/*.zip

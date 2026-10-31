@@ -590,7 +590,7 @@ void screens_draw_settings(const fl_state_t *model)
 
     static const fl_text_id_t LABELS[FL_SET_ROW_COUNT] = {
         FL_TXT_UI_SET_MUSIC, FL_TXT_UI_SET_SOUND, FL_TXT_UI_SET_HAPTICS,
-        FL_TXT_UI_SET_LANGUAGE, FL_TXT_UI_SET_THEME, FL_TXT_UI_SET_RESET,
+        FL_TXT_UI_SET_LANGUAGE, FL_TXT_UI_SET_RESET,
     };
     for (int row = 0; row < FL_SET_ROW_COUNT; ++row) {
         int y = FL_SET_ROW_Y0 + row * FL_SET_ROW_GAP;
@@ -617,14 +617,6 @@ void screens_draw_settings(const fl_state_t *model)
             draw_button(bx, by, bw, bh,
                         fl_fmt("< %s >", fl_tr(s->lang == FL_LANG_ZH ? FL_TXT_LANG_ZH
                                                                      : FL_TXT_LANG_EN)),
-                        true, false, frame);
-            break;
-        case FL_SET_ROW_THEME:
-            fl_settings_button_rect(row, 0, &bx, &by, &bw, &bh);
-            draw_button(bx, by, bw, bh,
-                        fl_fmt("< %s >", fl_tr(s->theme == FL_THEME_NIGHT
-                                               ? FL_TXT_UI_THEME_NIGHT
-                                               : FL_TXT_UI_THEME_DAY)),
                         true, false, frame);
             break;
         case FL_SET_ROW_RESET:

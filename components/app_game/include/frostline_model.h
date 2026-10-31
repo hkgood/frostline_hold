@@ -44,9 +44,9 @@ extern "C" {
 #define FL_SKILL_BTN_Y 9
 #define FL_SKILL_BTN_W 30
 #define FL_SKILL_BTN_H 28
-#define FL_SPEED_BTN_X 400
-#define FL_SPEED_BTN_W 44
-#define FL_PAUSE_BTN_X 356
+#define FL_SPEED_BTN_X 396
+#define FL_SPEED_BTN_W 40
+#define FL_PAUSE_BTN_X 352
 #define FL_PAUSE_BTN_W 36
 #define FL_BTN_Y 9
 #define FL_BTN_H 28
@@ -110,17 +110,18 @@ enum { FL_DRAG_NONE, FL_DRAG_PRESSED, FL_DRAG_MOVING };
 #define FL_TITLE_START_Y 368
 #define FL_TITLE_SETTINGS_Y 420
 
-/* The campaign map's way back to the title, in the open sky top right. */
-#define FL_MENU_BACK_X 352
-#define FL_MENU_BACK_Y 62
-#define FL_MENU_BACK_W 80
-#define FL_MENU_BACK_H 34
+/* The campaign map's way back to the title: a home key tucked into the top
+ * right, square to both edges and clear of the glass curve. */
+#define FL_MENU_BACK_X 418
+#define FL_MENU_BACK_Y 22
+#define FL_MENU_BACK_W 40
+#define FL_MENU_BACK_H 40
 
 /* The settings screen: one row per setting, the back button below. A
  * volume row has a minus and a plus button round its level bar; the other
  * rows have one wide button. */
 #define FL_SET_ROW_Y0 96
-#define FL_SET_ROW_GAP 48
+#define FL_SET_ROW_GAP 56
 #define FL_SET_ROW_H 40
 #define FL_SET_LABEL_X 64
 #define FL_SET_MINUS_X 236
@@ -139,7 +140,6 @@ typedef enum {
     FL_SET_ROW_SOUND,
     FL_SET_ROW_HAPTICS,
     FL_SET_ROW_LANGUAGE,
-    FL_SET_ROW_THEME,
     FL_SET_ROW_RESET,
     FL_SET_ROW_COUNT,
 } fl_settings_row_t;
@@ -232,12 +232,7 @@ typedef struct {
     uint8_t sound;    /* 0..FL_VOLUME_MAX */
     uint8_t haptics;  /* 0 or 1 */
     uint8_t lang;     /* 0 = Chinese, 1 = English */
-    uint8_t theme;    /* FL_THEME_DAY or FL_THEME_NIGHT */
 } fl_settings_t;
-
-/* Day draws ink on paper; night swaps the two over the whole screen. */
-#define FL_THEME_DAY 0
-#define FL_THEME_NIGHT 1
 
 typedef struct {
     int16_t x, y;

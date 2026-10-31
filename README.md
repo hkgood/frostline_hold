@@ -26,7 +26,7 @@
 - **7 种防御塔**：箭塔、冰霜塔、投石塔、雷暴塔、符文塔、盾卫营、余烬塔，随关卡逐步解锁，每种都有两条升级路线。
 - **15 种敌人**：包括两个首领，矿洞巨蠕和冰封之王。
 - **英雄霜卫**：可以召唤上场，并释放冰霜新星。
-- **完整体验**：动态标题页、设置（含日间 / 夜间显示模式）、结局动画、独立的标题和首领配乐、触感震动，中英双语，默认中文。
+- **完整体验**：动态标题页、设置页、结局动画、独立的标题和首领配乐、触感震动，中英双语，默认中文。
 
 ### 运行
 
@@ -50,7 +50,7 @@ Hold a frozen fortress in a two-tone engraving style: build towers, upgrade them
 - **7 towers**: Guard, Frost, Siege, Storm, Rune, Barracks and Ember. They unlock as you advance, each with two upgrade paths.
 - **15 enemies**: including two bosses, the Mine Wyrm and the Frost King.
 - **The Warden**: a hero you can summon, with a frost nova.
-- **The full package**: animated title screen, settings (with a day and a night display mode), an ending, separate title and boss themes, haptics, Chinese and English (Chinese by default).
+- **The full package**: animated title screen, settings, an ending, separate title and boss themes, haptics, Chinese and English (Chinese by default).
 
 ### Run
 

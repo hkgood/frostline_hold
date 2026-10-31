@@ -1882,7 +1882,6 @@ fl_settings_t fl_default_settings(void)
         .sound = FL_VOLUME_MAX,
         .haptics = 1,
         .lang = 0,
-        .theme = FL_THEME_DAY,
     };
 }
 
@@ -2339,10 +2338,6 @@ static void fl_settings_tap(fl_state_t *state, int32_t x, int32_t y)
                 break;
             case FL_SET_ROW_LANGUAGE:
                 s->lang = s->lang ? 0 : 1;
-                fl_settings_changed(state);
-                break;
-            case FL_SET_ROW_THEME:
-                s->theme = s->theme == FL_THEME_NIGHT ? FL_THEME_DAY : FL_THEME_NIGHT;
                 fl_settings_changed(state);
                 break;
             case FL_SET_ROW_RESET:

@@ -1,0 +1,29 @@
+{
+  "name": "frostline-promo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "30 s trailer for Frostline Hold (9:16 and 16:9), composed from real game captures",
+  "scripts": {
+    "capture": "python3 ../capture.py",
+    "sprites": "python3 ../export_sprites.py",
+    "audio": "~/.venvs/frostline-promo/bin/python ../audio.py",
+    "studio": "remotion studio",
+    "still": "remotion still FrostlinePromo",
+    "render": "remotion render FrostlinePromo ../../../release/frostline_trailer.mp4",
+    "render:youtube": "remotion render FrostlinePromoWide ../../../release/frostline_trailer_youtube_4k.mp4 --scale=2 --audio-bitrate=320k",
+    "thumbnail": "remotion still FrostlineThumbnail ../../../release/frostline_youtube_thumbnail.jpg --image-format=jpeg --jpeg-quality=95",
+    "capture:en": "python3 ../capture.py --lang en",
+    "audio:en": "~/.venvs/frostline-promo/bin/python ../audio.py --lang en",
+    "render:en": "remotion render FrostlinePromoEn ../../../release/frostline_trailer_en.mp4",
+    "render:youtube:en": "remotion render FrostlinePromoWideEn ../../../release/frostline_trailer_youtube_4k_en.mp4 --scale=2 --audio-bitrate=320k",
+    "thumbnail:en": "remotion still FrostlineThumbnailEn ../../../release/frostline_youtube_thumbnail_en.jpg --image-format=jpeg --jpeg-quality=95"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.530",
+    "@types/react": "^18.3.31",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.530",
+    "typescript": "^5.6.0"
+  }
+}

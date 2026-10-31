@@ -1274,9 +1274,11 @@ static void draw_selection_reach(const fl_state_t *model)
 
 static void draw_hud(const fl_state_t *model)
 {
-    /* The bar stops short of the bezel, so the glass curve stays map. */
-    DrawRectangle(FL_HUD_X, FL_HUD_Y, FL_HUD_W, FL_HUD_H, FL_INK);
-    DrawRectangle(FL_HUD_X, FL_HUD_Y + FL_HUD_H - 2, FL_HUD_W, 2, FL_PAPER);
+    /* The bar stops short of the bezel, so the glass curve stays map. Its
+     * corners are cut like every other tablet, which also keeps the top two
+     * clear of the curve. */
+    fill_plate(FL_HUD_X, FL_HUD_Y, FL_HUD_W, FL_HUD_H, 6, FL_INK);
+    outline_plate(FL_HUD_X, FL_HUD_Y, FL_HUD_W, FL_HUD_H, 6, FL_PAPER);
 
     /* The hero's frost nova: lit when it is ready, dark when it is not. */
     int ready = 0;
@@ -1745,15 +1747,18 @@ static void draw_menu_card(const fl_state_t *model)
 
     draw_padded(fv_assets.props, fv_assets.nodes[level->stage], (float)(x + 6),
                 (float)(y + 10), PAD_DRAW_SIZE);
-    /* Three lines: the stage number, its name, and its record or news. */
-    bool zh = fl_text_language() == FL_LANG_ZH;
-    int line1 = y + (zh ? 4 : 8);
-    int line2 = y + (zh ? 18 : 21);
-    int line3 = y + (zh ? 47 : 44);
+    /* Three lines: the stage number, its name, and its record or news, set
+     * as one evenly spaced block centred on the card. */
+    const int gap = fl_text_language() == FL_LANG_ZH ? 4 : 5;
+    int small_h = fl_text_height(FL_FONT_SMALL);
+    int large_h = fl_text_height(FL_FONT_LARGE);
+    int line1 = y + (FL_MENU_CARD_H - (small_h * 2 + large_h + gap * 2)) / 2;
+    int line2 = line1 + small_h + gap;
+    int line3 = line2 + large_h + gap;
     fl_text_draw(fl_trf(FL_TXT_UI_STAGE_N, (unsigned)i + 1), x + 52, line1,
                  FL_FONT_SMALL, FL_PAPER);
     fl_text_draw(level_name(i), x + 52, line2, FL_FONT_LARGE, FL_PAPER);
-    int mid3 = line3 + fl_text_height(FL_FONT_SMALL) / 2;
+    int mid3 = line3 + small_h / 2;
     if (model->level_stars[i] > 0) {
         for (int s = 0; s < 3; ++s) {
             int px = x + 58 + s * 13;
@@ -1797,6 +1802,22 @@ static void draw_scroll_hint(int x, int dir, uint32_t tick)
         int tip = x + dir * (reach - 3);
         DrawRectangle(dir > 0 ? tip - 2 : tip, y + row, 3, 1, FL_INK);
     }
+}
+
+/* The way back to the title: a house on a stone plate, a home key rather
+ * than a word. The roof is stepped row by row so its slopes stay crisp. */
+static void draw_home_button(void)
+{
+    int face_y, face_h;
+    draw_plate(FL_MENU_BACK_X, FL_MENU_BACK_Y, FL_MENU_BACK_W, FL_MENU_BACK_H,
+               PLATE_PLAIN, &face_y, &face_h);
+    const int cx = FL_MENU_BACK_X + FL_MENU_BACK_W / 2;
+    const int top = face_y + face_h / 2 - 11;
+    for (int i = 0; i < 12; ++i) {
+        DrawRectangle(cx - i, top + i, i * 2 + 1, 1, FL_INK);
+    }
+    DrawRectangle(cx - 8, top + 11, 17, 11, FL_INK);
+    DrawRectangle(cx - 2, top + 15, 5, 7, FL_PAPER);
 }
 
 static bool node_visible(const fl_state_t *model, uint8_t i, int margin)
@@ -1845,8 +1866,7 @@ static void draw_menu(const fl_state_t *model)
         draw_scroll_hint(FL_VIEW_WIDTH - 14, 1, model->tick);
     }
     draw_menu_card(model);
-    draw_button(FL_MENU_BACK_X, FL_MENU_BACK_Y, FL_MENU_BACK_W, FL_MENU_BACK_H,
-                fl_tr(FL_TXT_UI_BTN_MENU), true, false, model->tick);
+    draw_home_button();
 }
 
 /* The battle: the map and its life, the actors and their effects shaken

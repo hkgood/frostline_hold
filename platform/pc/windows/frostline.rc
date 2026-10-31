@@ -1,0 +1,36 @@
+// Frostline Hold's Windows resources: the program icon and the details
+// Explorer shows under Properties. CMake passes the FL_VERSION_* numbers.
+// The icon comes from assets_src/artgen/generate_icon.py.
+#include <winver.h>
+
+// SDL gives its window the first icon in the program, so this one is
+// Explorer's, the taskbar's and the title bar's.
+IDI_ICON1 ICON "frostline.ico"
+
+#define FL_VERSION_TEXT_(a, b, c) #a "." #b "." #c
+#define FL_VERSION_TEXT(a, b, c) FL_VERSION_TEXT_(a, b, c)
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION FL_VERSION_MAJOR, FL_VERSION_MINOR, FL_VERSION_PATCH, 0
+PRODUCTVERSION FL_VERSION_MAJOR, FL_VERSION_MINOR, FL_VERSION_PATCH, 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "hkgood"
+            VALUE "FileDescription", "Frostline Hold"
+            VALUE "FileVersion", FL_VERSION_TEXT(FL_VERSION_MAJOR, FL_VERSION_MINOR, FL_VERSION_PATCH)
+            VALUE "InternalName", "frostline"
+            VALUE "OriginalFilename", "Frostline Hold.exe"
+            VALUE "ProductName", "Frostline Hold"
+            VALUE "ProductVersion", FL_VERSION_TEXT(FL_VERSION_MAJOR, FL_VERSION_MINOR, FL_VERSION_PATCH)
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

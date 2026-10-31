@@ -1,0 +1,7 @@
+node_modules
+out
+public/clips
+public/clips_en
+public/audio/voice
+public/audio/soundtrack.wav
+public/audio/soundtrack_en.wav

@@ -102,3 +102,48 @@ asset pack is limited to 10 MiB.
 Host state exposes `phase`, `tick`, `pointer_x`, `pointer_y`, `pointer_down` and
 `state_hash` for automation; pause/resume/step/reset are wired for Host controls
 and replay.
+
+## PC, web and Steam builds
+
+`platform/pc` runs the same game module on macOS, Windows and the browser
+through SDL3 (fetched and linked statically by CMake). It compiles the sources
+listed in `game.sim.json` with `FROSTLINE_PC`, which plays sound through the
+Engine mixer like the device and keeps the record in a file like the Host. The
+Engine comes from the ESP-Mosaic checkout, found as for the firmware.
+
+```sh
+cmake -S platform/pc -B build-pc/dev && cmake --build build-pc/dev -j  # run it from build-pc/dev
+platform/pc/scripts/package_web.sh            # dist/web: zip for an itch.io HTML game
+platform/pc/scripts/package_windows.sh        # dist/windows-itch (MinGW-w64 cross build)
+platform/pc/scripts/package_mac.sh            # dist/mac-itch: universal, signed, notarized
+platform/pc/scripts/package_mac.sh --unsigned # local test without a certificate
+```
+
+Tools: CMake 3.24+, `brew install emscripten mingw-w64`. Any build takes
+`--smoke-test FILE.bmp`: it runs 90 ticks with a hidden window, saves the frame
+and exits, which `.github/workflows/pc-build.yml` uses on real Windows and
+macOS machines (run it by hand or push a `v*` tag). The workflow pins the
+Engine revision in `ENGINE_SHA`; move it with the submodule.
+
+The record lives in the player's data folder: `~/Library/Application
+Support/hkgood/Frostline Hold/` on macOS, `%APPDATA%\hkgood\Frostline Hold\` on
+Windows, IndexedDB in the browser (`web/frostline_pre.js`). F11, Alt+Enter or
+Ctrl+Cmd+F switch fullscreen on the desktop.
+
+The app icon is generated: `cd assets_src && python3 artgen/generate_icon.py`
+dithers `ai/icon_source.jpg` into the game's two inks for the large sizes and
+draws 16, 24 and 32 pixels by hand (the `SMALL` maps). It writes
+`mac/FrostlineHold.icns`, `windows/frostline.ico` (linked through
+`windows/frostline.rc`) and the store images in `platform/pc/icon/`
+(1024 master, Steam community 184×184, itch 512×512).
+
+Signing the Mac app takes a "Developer ID Application" certificate (created
+by the team's Account Holder in Xcode > Settings > Accounts) and a notarytool
+profile stored once with `xcrun notarytool store-credentials frostline`.
+
+Steam builds add `--steam` to the package scripts with `STEAMWORKS_SDK` (the
+unpacked SDK, 1.58 or later) and `FROSTLINE_STEAM_APPID` set;
+`scripts/upload_steam.sh` then uploads both depots with `steamcmd`. Saves
+need no code: point Steam Auto-Cloud at the data folders above. A development
+Steam build writes `steam_appid.txt` beside the program so it starts outside
+Steam; the packages leave it out.

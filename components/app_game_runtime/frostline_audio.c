@@ -7,14 +7,20 @@
  * Host simulator compiles these files without component include paths. */
 #include "../app_game/include/app_game.h"
 
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+/* The device and the PC build (desktop and web) play the sound themselves;
+ * only the device has a motor. */
+#if defined(RAYLIB_LITE_GAME_NATIVE) || defined(FROSTLINE_PC)
+#define FL_AUDIO_PLAYBACK 1
 #include "raylib_lite_raylib_audio.h"
+#endif
+#if defined(RAYLIB_LITE_GAME_NATIVE)
 #include "native_feedback.h"
 #endif
 
 /* The asset names the packer produced from the WAV files. Only the device
- * loads them; the Host names the sound in the state JSON instead. */
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+ * and the PC build load them; the Host names the sound in the state JSON
+ * instead. */
+#if defined(FL_AUDIO_PLAYBACK)
 static const char *const SFX_ASSETS[FL_SFX_COUNT] = {
     "ui_tap.sound",  "ui_deny.sound",  "build.sound",   "upgrade.sound",
     "sell.sound",    "shot_guard.sound", "shot_frost.sound", "shot_siege.sound",
@@ -98,7 +104,7 @@ static const fl_cue_rule_t RULES[] = {
 
 #define RULE_COUNT (sizeof(RULES) / sizeof(RULES[0]))
 
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
 static Sound s_sounds[FL_SFX_COUNT];
 static Music s_music[FL_MUSIC_COUNT];
 #endif
@@ -127,7 +133,7 @@ static void play_cue(frostline_audio_t *audio, uint8_t cue)
     }
     audio->variant = (uint8_t)((audio->variant + 1u) & 1u);
 
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
     if (audio->ready && audio->sound_volume > 0) {
         PlaySound(s_sounds[cue]);
     }
@@ -166,7 +172,7 @@ void frostline_audio_init(frostline_audio_t *audio)
     audio->music_volume = VOLUME_STEPS;
     audio->sound_volume = VOLUME_STEPS;
     audio->haptics = true;
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
     InitAudioDevice();
     if (IsAudioDeviceReady()) {
         /* The mixer holds CONFIG_ESP_MOSAICO_AUDIO_CLIPS clips and refuses
@@ -180,9 +186,11 @@ void frostline_audio_init(frostline_audio_t *audio)
         }
         audio->ready = true;
     }
-    raylib_lite_native_feedback_init();
 #else
     audio->ready = true;
+#endif
+#if defined(RAYLIB_LITE_GAME_NATIVE)
+    raylib_lite_native_feedback_init();
 #endif
 }
 
@@ -191,7 +199,7 @@ void frostline_audio_shutdown(frostline_audio_t *audio)
     if (!audio) {
         return;
     }
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
     if (audio->ready) {
         for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
             if (s_sounds[i].frameCount) {
@@ -206,6 +214,8 @@ void frostline_audio_shutdown(frostline_audio_t *audio)
         }
         CloseAudioDevice();
     }
+#endif
+#if defined(RAYLIB_LITE_GAME_NATIVE)
     raylib_lite_native_feedback_stop();
 #endif
     audio->ready = false;
@@ -221,7 +231,7 @@ void frostline_audio_configure(frostline_audio_t *audio, uint8_t music,
     audio->music_volume = music > VOLUME_STEPS ? VOLUME_STEPS : music;
     audio->sound_volume = sound > VOLUME_STEPS ? VOLUME_STEPS : sound;
     audio->haptics = haptics;
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
     if (audio->ready) {
         float level = (float)audio->sound_volume / (float)VOLUME_STEPS;
         for (unsigned i = 0; i < FL_SFX_COUNT; ++i) {
@@ -295,7 +305,7 @@ void frostline_audio_update(frostline_audio_t *audio,
     }
     audio->music_wanted = wanted != FL_MUSIC_NONE;
     if (wanted != audio->music_track) {
-#if defined(RAYLIB_LITE_GAME_NATIVE)
+#if defined(FL_AUDIO_PLAYBACK)
         if (audio->ready) {
             if (audio->music_track != FL_MUSIC_NONE
                     && s_music[audio->music_track].frameCount) {

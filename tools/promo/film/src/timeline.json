@@ -1,0 +1,50 @@
+{
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "wide": {"width": 1920, "height": 1080},
+  "bpm": 120,
+  "durationInFrames": 900,
+  "scenes": {
+    "hook":     {"from": 0,   "duration": 60},
+    "title":    {"from": 60,  "duration": 90},
+    "build":    {"from": 150, "duration": 150},
+    "nova":     {"from": 300, "duration": 150},
+    "roster":   {"from": 450, "duration": 120},
+    "boss":     {"from": 570, "duration": 150},
+    "campaign": {"from": 720, "duration": 90},
+    "finale":   {"from": 810, "duration": 90}
+  },
+  "clips": [
+    {"scene": "hook",     "id": "king_hook",   "clip": "king",     "at": 6,   "duration": 54,  "segments": [[0, 89, 0.75]]},
+    {"scene": "title",    "id": "title",       "clip": "title",    "at": 0,   "duration": 90,  "segments": [[0, 6, 1]]},
+    {"scene": "build",    "id": "ring",        "clip": "ring",     "at": 0,   "duration": 45,  "segments": [[0, 4, 1]]},
+    {"scene": "build",    "id": "t_storm",     "clip": "towers",   "at": 45,  "duration": 15,  "segments": [[0, 75, 1]]},
+    {"scene": "build",    "id": "t_rune",      "clip": "towers",   "at": 60,  "duration": 15,  "segments": [[0, 71, 1]]},
+    {"scene": "build",    "id": "t_siege",     "clip": "towers",   "at": 75,  "duration": 15,  "segments": [[0, 109, 1]]},
+    {"scene": "build",    "id": "t_frost",     "clip": "towers",   "at": 90,  "duration": 15,  "segments": [[0, 98, 1]]},
+    {"scene": "build",    "id": "t_ember",     "clip": "towers",   "at": 105, "duration": 15,  "segments": [[0, 113, 1]]},
+    {"scene": "build",    "id": "t_guard",     "clip": "towers",   "at": 120, "duration": 15,  "segments": [[0, 122, 1]]},
+    {"scene": "build",    "id": "t_barracks",  "clip": "towers",   "at": 135, "duration": 15,  "segments": [[0, 136, 1]]},
+    {"scene": "nova",     "id": "nova",        "clip": "nova",     "at": 0,   "duration": 150, "segments": [[0, 0, 0.8], [40, 32, 0.36], [90, 50, 0], [96, 50, 1]]},
+    {"scene": "roster",   "id": "roster_bg",   "clip": "towers",   "at": 0,   "duration": 120, "segments": [[0, 180, 1]]},
+    {"scene": "boss",     "id": "wyrm_banner", "clip": "wyrm",     "at": 0,   "duration": 60,  "segments": [[0, 4, 1]]},
+    {"scene": "boss",     "id": "wyrm_rise",   "clip": "wyrm",     "at": 60,  "duration": 45,  "segments": [[0, 172, 1]]},
+    {"scene": "boss",     "id": "king_freeze", "clip": "king",     "at": 105, "duration": 45,  "segments": [[0, 180, 1]]},
+    {"scene": "campaign", "id": "campaign",    "clip": "campaign", "at": 0,   "duration": 90,  "segments": [[0, 8, 1.42]]},
+    {"scene": "finale",   "id": "victory",     "clip": "victory",  "at": 0,   "duration": 30,  "segments": [[0, 6, 1]]},
+    {"scene": "finale",   "id": "logo",        "clip": "title",    "at": 30,  "duration": 60,  "segments": [[0, 150, 1]]}
+  ],
+  "voice": [
+    {"id": "v1", "at": 64,  "zh": "凛冬降临，霜线将破。",           "en": "Winter falls. The line will break.",
+     "en_vo": "Winter falls, the line will break.", "rate_en": "-5%"},
+    {"id": "v2", "at": 158, "zh": "筑起高塔，七重防线，由你调遣。", "en": "Raise seven towers. Command the line."},
+    {"id": "v3", "end": 396, "zh": "唤醒霜卫，冰封万物。",          "en": "Wake the Warden. Freeze them all."},
+    {"id": "v4", "at": 578, "zh": "当首领破土而出……",              "en": "When the boss breaks through..."},
+    {"id": "v5", "at": 724, "zh": "八个章节，二十二场死守。",       "en": "8 chapters. 22 last stands.",
+     "en_vo": "Eight chapters, twenty-two last stands.", "rate_en": "-5%"},
+    {"id": "v6", "at": 830, "rate": "-2%", "zh": "霜线要塞。守住它。", "en": "Frostline Hold. Hold the line.",
+     "en_vo": "Frostline Hold, hold the line.", "rate_en": "-5%", "at_en": 824}
+  ],
+  "hits": [6, 60, 150, 195, 390, 450, 570, 630, 720, 840]
+}

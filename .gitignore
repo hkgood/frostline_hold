@@ -58,3 +58,13 @@ __pycache__/
 
 # the player's best run, kept on the device
 frostline_record.bin
+
+# PC, web and Steam packages (platform/pc/scripts)
+dist/
+
+# rendered trailers and thumbnails, shipped as release attachments
+release/
+
+# promo film: npm deps and rendered frames/media, rebuilt locally
+tools/promo/film/node_modules/
+tools/promo/film/public/

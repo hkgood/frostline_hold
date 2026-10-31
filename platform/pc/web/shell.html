@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Frostline Hold</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #312f28;
+      color: #c9c3b4;
+      font: 14px/1.4 system-ui, sans-serif;
+    }
+    /* The canvas takes the touches; the page must not scroll or zoom. */
+    canvas {
+      display: block;
+      touch-action: none;
+      outline: none;
+    }
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    #bar {
+      width: 200px;
+      height: 4px;
+      background: #4a473e;
+    }
+    #fill {
+      width: 0;
+      height: 100%;
+      background: #c9c3b4;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div id="status">Loading…</div>
+    <div id="bar"><div id="fill"></div></div>
+  </div>
+  <!-- The canvas sits alone in its parent: SDL puts it back after its last
+       sibling when it recreates the window, and the page's other elements
+       have moved away by then. -->
+  <div><canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas></div>
+  <script>
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      setStatus: function (text) {
+        var match = text && text.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
+        if (match) {
+          document.getElementById('fill').style.width =
+            (100 * parseInt(match[1], 10) / parseInt(match[3], 10)) + '%';
+        }
+        if (!text) document.getElementById('loading').style.display = 'none';
+      },
+      onAbort: function () {
+        document.getElementById('status').textContent =
+          'The game could not start in this browser.';
+      }
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
