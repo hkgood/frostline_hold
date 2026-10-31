@@ -1,24 +1,29 @@
-"""Procedural 1-bit sprite sheets for Frostline Hold.
+"""Sprite sheets for Frostline Hold: towers, the enemy roster, the hero,
+build pads, projectiles, UI icons and the castle's moving parts.
 
-The sprites share the engraving language of the background: a solid black
-silhouette for the mass, with white lines carved into it for structure,
-texture and light. Nothing is a flat geometric blob and nothing is a white
-block with an outline.
+Every sprite is modelled as lit solids in artgen.shade and dithered at the
+end, so each one carries real volume: round towers with coursed stone,
+faceted ice, shaded fur and armour. Sizes are the native draw sizes, so the
+view never rescales a sheet and the dither pattern stays exact.
 
-Every sprite is authored at its final pixel size, so the packer never
-rescales anything and the two-colour rule survives. Each sheet is a uniform
-grid; the atlas cell is four pixels larger than the source cell so the
-packer's thumbnail step never triggers a LANCZOS resample.
+Common conventions:
+  * light comes from the upper left
+  * a sprite stands with its feet FOOT pixels above the bottom of its cell
+  * every sprite gets a one pixel ink outline and a dithered cast shadow
 """
-from artgen.canvas import (BLACK, WHITE, Canvas, fill_polygon, hatch_polygon,
-                           outline_polygon)
+import math
 
-UNIT_CELL = 48
-PROP_CELL = 32
-HERO_CELL = 40
-HUSK_CELL = 40
-TITAN_CELL = 64
+from artgen import shade as S
+from artgen.canvas import Canvas
+
+UNIT_CELL = 56
+PROP_CELL = 40
+HERO_CELL = 48
+HUSK_CELL = 48
+TITAN_CELL = 80
 FX_CELL = 16
+ICON_CELL = 28
+CASTLE_FX_CELL = 28
 
 UNIT_ATLAS_CELL = UNIT_CELL + 4
 PROP_ATLAS_CELL = PROP_CELL + 4
@@ -26,605 +31,1691 @@ HERO_ATLAS_CELL = HERO_CELL + 4
 HUSK_ATLAS_CELL = HUSK_CELL + 4
 TITAN_ATLAS_CELL = TITAN_CELL + 4
 FX_ATLAS_CELL = FX_CELL + 4
+ICON_ATLAS_CELL = ICON_CELL + 4
+CASTLE_FX_ATLAS_CELL = CASTLE_FX_CELL + 4
+
+# Feet sit this far above the bottom of every cell; the view uses the same
+# number to stand a sprite on its map position.
+FOOT = 6
+WALK_FRAMES = 6
 
 
-def _canvas(size):
-    return Canvas(size, size)
+def _phase(frame, frames=WALK_FRAMES):
+    return frame / float(frames) * 2.0 * math.pi
 
 
-def _carve_masonry(canvas, x0, x1, y0, y1, courses=4, stagger=True):
-    """Carve mortar joints into a black stone mass."""
-    step = max(3, (y1 - y0) // courses)
-    row = 0
-    for y in range(y0 + step, y1, step):
-        if stagger and row % 2 == 0:
-            canvas.hline(x0 + 3, y, x1 - x0 - 3, WHITE)
-            canvas.set(x0 + 1, y, WHITE)
-        else:
-            canvas.hline(x0 + 1, y, x1 - x0 - 1, WHITE)
-        row += 1
+def _rect(tc, x0, y0, x1, y1, tone):
+    for y in range(int(y0), int(y1)):
+        for x in range(int(x0), int(x1)):
+            tc.put(x, y, tone)
 
 
-# ---------------------------------------------------------------- towers
-def _stone_block_rows(canvas, x0, x1, y0, y1, rows=2):
-    """Carve a few stone joints, broken into blocks instead of full stripes."""
-    step = max(4, (y1 - y0) // rows)
-    for index, y in enumerate(range(y0 + step, y1, step)):
-        if index % 2 == 0:
-            canvas.hline(x0 + 4, y, x1 - x0 - 4, WHITE)
-            canvas.set(x0 + 1, y, WHITE)
-        else:
-            canvas.hline(x0 + 2, y, x1 - x0 - 2, WHITE)
-            canvas.set(x1 - 2, y, WHITE)
+def _arch_door(tc, cx, bottom, width, height, tone=0.03):
+    """A dark doorway with a round head, set into a wall."""
+    half = width / 2.0
+    _rect(tc, cx - half, bottom - height + half, cx + half, bottom, tone)
+    for y in range(int(bottom - height), int(bottom - height + half) + 1):
+        for x in range(int(cx - half), int(cx + half) + 1):
+            dx = (x + 0.5 - cx) / half
+            dy = (y + 0.5 - (bottom - height + half)) / half
+            if dx * dx + dy * dy <= 1.0:
+                tc.put(x, y, tone)
+
+
+def _snow_cap(tc, cx, y, half, depth=2):
+    """A soft drift of snow sitting on a ledge: the brightest band."""
+    for dy in range(depth):
+        inset = dy * 0.5
+        for x in range(int(cx - half + inset), int(cx + half - inset) + 1):
+            u = (x + 0.5 - cx) / max(1.0, half)
+            tc.put(x, y - dy, S.lit(u * 0.6, -1.0, 0.5, 1.25))
+
+
+# ----------------------------------------------------------------------
+# Building blocks shared by several sprites
+# ----------------------------------------------------------------------
+
+
+def crystal(tc, cx, top, bottom, half, albedo=1.0, lean=0.0):
+    """A hexagonal ice prism with a pointed tip, three faces visible.
+
+    Each facet has its own normal, so the column reads as cut ice: bright
+    left face, mid front, dark right face, and a hard specular on the tip.
+    """
+    inner = half * 0.38
+    shoulder = top + half * 1.5
+    ax = cx + lean
+    left = [(cx - half, shoulder + 1), (cx - inner, shoulder + 2),
+            (cx - inner, bottom + 1), (cx - half, bottom)]
+    front = [(cx - inner, shoulder + 2), (cx + inner, shoulder + 2),
+             (cx + inner, bottom + 1), (cx - inner, bottom + 1)]
+    right = [(cx + inner, shoulder + 2), (cx + half, shoulder + 1),
+             (cx + half, bottom), (cx + inner, bottom + 1)]
+
+    def vein(x, y, _u, _v):
+        # A diagonal refraction streak through the front face.
+        return -0.35 if int(x - cx + y * 0.5) % 9 == 0 else 0.0
+
+    S.polygon(tc, left, (-0.85, -0.1, 0.55), albedo, spec=0.2)
+    S.polygon(tc, front, (0.15, 0.0, 1.0), albedo * 0.72, tex=vein)
+    S.polygon(tc, right, (0.95, 0.1, 0.3), albedo * 0.8)
+    S.polygon(tc, [(ax, top), (cx - half, shoulder + 1),
+                   (cx - inner, shoulder + 2)], (-0.6, -0.8, 0.5), albedo,
+              spec=0.6)
+    S.polygon(tc, [(ax, top), (cx - inner, shoulder + 2),
+                   (cx + inner, shoulder + 2)], (0.0, -0.6, 0.8), albedo,
+              spec=0.4)
+    S.polygon(tc, [(ax, top), (cx + inner, shoulder + 2),
+                   (cx + half, shoulder + 1)], (0.7, -0.5, 0.5), albedo)
+    S.glint(tc, int(cx - inner), int(shoulder + 3), 1 if half > 4 else 0)
+
+
+def stone_plinth(tc, cx, base, r, height=5, seed=0):
+    """A squat round footing of big blocks under a tower."""
+    S.cylinder(tc, cx, base - height, base, r, 0.92,
+               tex=S.masonry(r, course=height, blocks=9, seed=seed), lid=0.3)
+
+
+def wheel(tc, cx, cy, r, albedo=0.7):
+    """A spoked cart wheel, seen nearly face on."""
+    def spokes(x, y, u, v):
+        angle = math.atan2(v, u * 0.8)
+        ring = math.sqrt(u * u + v * v)
+        if ring > 0.86:
+            return 0.1
+        if ring > 0.7:
+            return -0.7
+        return -0.6 if (angle * 6.0 / math.pi) % 2.0 < 0.5 else 0.0
+
+    S.ellipsoid(tc, cx, cy, r * 0.8, r, albedo, depth=0.35, tex=spokes)
+    S.ellipsoid(tc, cx, cy, 1.4, 1.6, 0.9, spec=0.5)
+
+
+# ----------------------------------------------------------------------
+# Towers (56 px cells)
+# ----------------------------------------------------------------------
+
+
+def _tower_canvas():
+    return S.ToneCanvas(UNIT_CELL, UNIT_CELL)
 
 
 def _guard_tower(level, branch=None):
-    """Ballista tower: coursed stone shaft, timber deck, crossbow."""
-    c = _canvas(UNIT_CELL)
-    base = 46
-    half = 14 + level
-    top = base - (22 + level * 4)
+    """Round stone keep with a wooden fighting gallery and a ballista."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    r = 12 + level
+    height = 14 + level * 4
+    top = base - height
+    S.shadow_ellipse(tc, cx + 6, base + 1, r + 9, 4.5, 0.5)
 
-    # Stone shaft: one solid black mass with a lit left edge.
-    fill_polygon(c, [(24 - half, base), (24 + half, base),
-                      (24 + half - 3, top), (24 - half + 3, top)], BLACK)
-    c.vline(24 - half + 2, top + 3, base - top - 4, WHITE)
-    c.vline(24 + half - 4, top + 3, base - top - 4, WHITE)
-    _stone_block_rows(c, 24 - half, 24 + half, top + 3, base - 1, 2)
-    # Arrow slit and a band of snow along the base.
-    c.fill_rect(23, top + 6, 2, 6, WHITE)
-    c.fill_rect(24 - half + 1, base - 3, half * 2 - 2, 1, WHITE)
+    stone_plinth(tc, cx, base, r + 3, seed=level)
+    S.cylinder(tc, cx, top, base - 5, r, 0.96,
+               tex=S.masonry(r, seed=level + 4))
+    _arch_door(tc, cx - 2, base - 4, 6, 9)
+    # Arrow slits on the lit face, so the wall shows its thickness.
+    _rect(tc, cx - 6, top + 5, cx - 4, top + 10, 0.05)
+    if height > 24:
+        _rect(tc, cx + 2, top + 13, cx + 4, top + 18, 0.05)
 
-    # Timber deck with merlons.
-    c.fill_rect(24 - half - 2, top - 5, half * 2 + 4, 6, BLACK)
-    c.fill_rect(24 - half, top - 3, half * 2, 1, WHITE)
-    for post in (-half + 1, -4, half - 8):
-        c.fill_rect(24 + post, top - 10, 5, 6, BLACK)
+    if branch == "marksman":
+        # A tall lookout: shingled spire and a pennant.
+        S.cylinder(tc, cx, top - 6, top, r + 2, 0.9,
+                   tex=S.wood(seed=7, spacing=3, vertical=True))
+        S.cone(tc, cx, top - 20, top - 5, r + 4, 0.8,
+               tex=S.shingles(rows=5, depth=0.4))
+        S.capsule(tc, cx, top - 24, cx, top - 18, 1.5, 0.6)
+        S.polygon(tc, [(cx + 1, top - 24), (cx + 10, top - 22),
+                       (cx + 1, top - 19)], (-0.2, -0.2, 1.0), 0.85)
+        _rect(tc, cx - 4, top - 4, cx + 4, top - 1, 0.04)
+        S.capsule(tc, cx - 1, top - 3, cx + 9, top - 6, 1.6, 0.8, spec=0.4)
+        S.occlude(tc, base - 5, 8, 0.3)
+        return tc.to_canvas()
 
-    # Crossbow: limbs, string and bolt, all fully inside the cell.
-    pivot_y = top - 6
-    c.thick_line(24, pivot_y, 24 - 10, pivot_y - 6, 3, BLACK)
-    c.thick_line(24, pivot_y, 24 + 10, pivot_y - 6, 3, BLACK)
-    c.line(24 - 10, pivot_y - 6, 24, pivot_y - 2, WHITE)
-    c.line(24 + 10, pivot_y - 6, 24, pivot_y - 2, WHITE)
-    c.fill_rect(23, pivot_y - 15, 3, 17, BLACK)
-    c.fill_rect(24, pivot_y - 13, 1, 13, WHITE)
+    if level == 1:
+        # Plain crenellated parapet.
+        S.cylinder(tc, cx, top - 4, top, r + 2, 0.94,
+                   tex=S.masonry(r + 2, course=4, blocks=8, seed=2),
+                   cap=0.45)
+        for u in (-0.85, -0.3, 0.25, 0.8):
+            mx = cx + u * (r + 1)
+            S.box(tc, mx - 2, top - 9, 4, 5, 2, 0.94, top_albedo=1.3)
+    else:
+        # A timber gallery hung out over the wall, roofed in snow.
+        S.cylinder(tc, cx, top - 7, top, r + 3, 0.82,
+                   tex=S.wood(seed=level, spacing=3, vertical=True), cap=0.5)
+        for u in (-0.9, -0.45, 0.0, 0.45, 0.9):
+            bx = cx + u * (r + 2)
+            S.capsule(tc, bx, top, bx - u * 2, top + 4, 1.6, 0.6)
+        _snow_cap(tc, cx, top - 7, r + 3, depth=2)
 
+    # The ballista: a wooden stock, a bent bow and a bolt pointing out.
+    deck = top - (5 if level == 1 else 8)
+    S.capsule(tc, cx - 2, deck, cx + 2, deck - 4, 3, 0.7,
+              tex=S.wood(seed=11, spacing=2))
+    span = 7 + level * 2
+    S.capsule(tc, cx + 3, deck - 5, cx - span + 5, deck - 12, 2, 0.85)
+    S.capsule(tc, cx + 3, deck - 5, cx + span, deck - 1, 2, 0.85)
+    S.capsule(tc, cx - 4, deck - 2, cx + 10 + level, deck - 9, 1.4, 1.0,
+              spec=0.6)
     if branch == "pierce":
-        c.polygon([(20, pivot_y - 9), (28, pivot_y - 9), (24, pivot_y - 18)], BLACK)
-        c.fill_rect(23, pivot_y - 7, 2, 9, WHITE)
-    elif branch == "marksman":
-        # a scoped single shot: one long limb and a sighting tube
-        c.thick_line(24, pivot_y, 24 - 11, pivot_y - 7, 3, BLACK)
-        c.thick_line(24, pivot_y, 24 + 11, pivot_y - 7, 3, BLACK)
-        c.line(24 - 11, pivot_y - 7, 24, pivot_y - 2, WHITE)
-        c.line(24 + 11, pivot_y - 7, 24, pivot_y - 2, WHITE)
-        c.fill_rect(21, pivot_y - 17, 6, 4, BLACK)
-        c.fill_rect(22, pivot_y - 16, 4, 2, WHITE)
-        c.fill_rect(23, pivot_y - 14, 2, 17, BLACK)
-        c.fill_rect(24, pivot_y - 12, 1, 13, WHITE)
-    elif level >= 3:
-        c.fill_rect(24 + half + 2, top - 4, 3, 17, BLACK)
-        c.fill_rect(24 + half + 2, top - 4, 3, 12, WHITE)
-    return c
+        # Iron-tipped bolts racked beside the engine, and a war banner.
+        for i in range(3):
+            S.capsule(tc, cx - r + i * 2, deck - 1, cx - r + i * 2 + 2,
+                      deck - 9, 1.0, 0.95, spec=0.5)
+        S.capsule(tc, cx + r, deck + 2, cx + r, deck - 14, 1.5, 0.55)
+        S.polygon(tc, [(cx + r + 1, deck - 14), (cx + r + 9, deck - 11),
+                       (cx + r + 1, deck - 7)], (-0.3, -0.1, 1.0), 0.85,
+                  tex=S.folds(4))
+    S.occlude(tc, base - 5, 8, 0.3)
+    return tc.to_canvas()
 
 
 def _frost_tower(level, branch=None):
-    """Frost tower: coursed stone, a faceted ice roof, a crystal finial."""
-    c = _canvas(UNIT_CELL)
-    base = 46
-    half = 14 + level
-    top = base - (22 + level * 4)
+    """An ice spire grown out of a rune-cut stone plinth."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    S.shadow_ellipse(tc, cx + 6, base + 1, 19, 4.5, 0.5)
 
-    fill_polygon(c, [(24 - half, base), (24 + half, base),
-                      (24 + half - 3, top + 5), (24 - half + 3, top + 5)], BLACK)
-    c.vline(24 - half + 2, top + 7, base - top - 8, WHITE)
-    c.vline(24 + half - 4, top + 7, base - top - 8, WHITE)
-    _stone_block_rows(c, 24 - half, 24 + half, top + 7, base - 1, 2)
-    c.fill_rect(23, top + 10, 2, 6, WHITE)
-    c.fill_rect(24 - half + 1, base - 3, half * 2 - 2, 1, WHITE)
+    # Plinth: two stepped drums of dressed stone.
+    stone_plinth(tc, cx, base, 15, height=5, seed=3)
+    S.cylinder(tc, cx, base - 10, base - 5, 12, 0.9,
+               tex=S.masonry(12, course=5, blocks=6, seed=9), cap=0.85)
+    # Runes, as dark notches round the drum.
+    for u in (-0.6, -0.1, 0.4):
+        _rect(tc, cx + u * 12, base - 8, cx + u * 12 + 2, base - 6, 0.1)
 
-    # Ice roof: a white cone split by black facets.
-    roof = [(24, top - 14), (24 + half - 1, top + 6), (24 - half + 1, top + 6)]
-    fill_polygon(c, roof, BLACK)
-    fill_polygon(c, [(24, top - 8), (24 + half - 6, top + 5),
-                     (24 - half + 6, top + 5)], WHITE)
-    c.line(24, top - 8, 24, top + 5, BLACK)
-    c.line(24 - 8, top - 3, 24 - 3, top + 2, BLACK)
-    c.line(24 + 8, top - 3, 24 + 3, top + 2, BLACK)
-    c.line(24 - 12, top + 1, 24 - 7, top + 4, BLACK)
-
-    # Crystal finial.
-    head_y = top - 17
-    c.polygon([(24, head_y - 6), (24 + 6, head_y), (24, head_y + 6),
-               (24 - 6, head_y)], BLACK)
-    c.polygon([(24, head_y - 3), (24 + 3, head_y), (24, head_y + 3),
-               (24 - 3, head_y)], WHITE)
-    c.line(24, head_y - 3, 24 + 3, head_y, BLACK)
-
+    height = 18 + level * 6
+    if branch == "ray":
+        height += 6
+    top = base - 10 - height
+    half = 6 + level
+    if branch == "ray":
+        half = 5 + level // 2
+    crystal(tc, cx, top, base - 10, half, lean=-1)
+    if level >= 2:
+        # Smaller shards breaking out of the plinth.
+        crystal(tc, cx - half - 4, base - 10 - height * 0.5, base - 9, 3.5,
+                lean=-2)
+        crystal(tc, cx + half + 4, base - 10 - height * 0.42, base - 8, 3,
+                lean=2)
     if branch == "nova":
-        import math
-        for angle in range(0, 360, 45):
-            c.set(24 + int(math.cos(math.radians(angle)) * 12),
-                  head_y + int(math.sin(math.radians(angle)) * 12), BLACK)
+        # A ring of shards orbiting the spire, each one cast in shadow.
+        for i in range(6):
+            angle = i / 6.0 * 2.0 * math.pi + 0.4
+            sx = cx + math.cos(angle) * (half + 10)
+            sy = top + height * 0.45 + math.sin(angle) * 4
+            crystal(tc, sx, sy - 6, sy, 2.2)
     elif branch == "ray":
-        c.fill_rect(22, head_y - 18, 4, 16, BLACK)
-        c.fill_rect(23, head_y - 16, 2, 12, WHITE)
-    return c
+        # A lens of clear ice at the tip, held by a cold iron ring.
+        S.ellipsoid(tc, cx - 1, top - 3, 5, 5, 1.0, spec=0.9)
+        S.glint(tc, int(cx - 3), int(top - 5), 1)
+    S.glint(tc, int(cx - half * 0.4), int(top + half * 2 + 4), 1)
+    S.occlude(tc, base - 5, 6, 0.25)
+    return tc.to_canvas()
 
 
 def _siege_tower(level, branch=None):
-    """Siege engine: a timber trebuchet with a spoked wheel and a stone."""
-    c = _canvas(UNIT_CELL)
-    ground = 46
-    arm_y = 20 - level * 2
+    """A timber catapult on a stone emplacement."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    S.shadow_ellipse(tc, cx + 6, base + 1, 22, 5, 0.5)
 
-    # Spoked wheels, drawn first so the frame overlaps them.
-    for wx in (13, 31):
-        c.disc(wx, ground - 6, 8, BLACK)
-        c.disc(wx, ground - 6, 6, WHITE)
-        c.disc(wx, ground - 6, 2, BLACK)
-        for angle in (20, 70, 110, 160):
-            import math
-            c.line(wx, ground - 6,
-                   wx + int(math.cos(math.radians(angle)) * 6),
-                   ground - 6 + int(math.sin(math.radians(angle)) * 6), BLACK)
+    # Emplacement: a low ring of fieldstone.
+    stone_plinth(tc, cx, base, 18, height=6, seed=5)
+    width = 22 + level * 2
+    left = cx - width // 2
+    deck = base - 13
+    # The frame: a heavy timber bed with a dark side and a snow-dusted top.
+    S.box(tc, left, deck, width, 5, 5, 0.85,
+          tex=S.wood(seed=level, spacing=3), top_albedo=1.2)
+    wheel(tc, left + 3, deck + 6, 6)
+    wheel(tc, left + width - 2, deck + 6, 6)
 
-    # Ground beam.
-    c.fill_rect(6, ground - 12, 34, 5, BLACK)
-    for plank in range(9, 38, 6):
-        c.fill_rect(plank, ground - 11, 1, 3, WHITE)
+    # A-frame uprights and the cross axle.
+    upright = 11 + level * 3
+    for x in (cx - 7, cx + 6):
+        S.capsule(tc, x, deck - 1, cx - 0.5 + (x - cx) * 0.3, deck - upright,
+                  3.4, 0.8 if x < cx else 0.55,
+                  tex=S.wood(seed=x, spacing=4, vertical=True))
+    S.capsule(tc, cx - 6, deck - upright + 2, cx + 6, deck - upright + 2, 3,
+              0.7, spec=0.3)
 
-    # A-frame legs and crossbar.
-    c.thick_line(22, ground - 12, 13, arm_y + 8, 4, BLACK)
-    c.thick_line(22, ground - 12, 31, arm_y + 8, 4, BLACK)
-    c.thick_line(13, arm_y + 8, 31, arm_y + 8, 3, BLACK)
-    c.thick_line(16, ground - 14, 26, ground - 16, 3, BLACK)
-
-    # Throwing arm with the stone in the sling.
-    c.thick_line(11, arm_y + 2, 38, arm_y - 8, 4, BLACK)
-    c.thick_line(11, arm_y + 2, 38, arm_y - 8, 1, WHITE)
-    c.disc(40, arm_y - 9, 6 + level, BLACK)
-    c.disc(40, arm_y - 9, 4 + level, WHITE)
-    c.disc(38, arm_y - 11, 2, BLACK)
-    c.line(34, arm_y - 3, 40, arm_y - 9, WHITE)
-    # Counterweight.
-    c.disc(9, arm_y + 4, 5, BLACK)
-    c.disc(9, arm_y + 4, 3, WHITE)
-    c.line(9, arm_y + 9, 10, ground - 14, BLACK)
-
+    # The throwing arm, cocked back, with the bucket and its load.
+    pivot_y = deck - upright + 2
+    arm_x = cx - 13 - level
+    arm_y = pivot_y - 8 - level * 2
+    S.capsule(tc, cx + 8, pivot_y + 5, arm_x, arm_y, 3.2, 0.95,
+              tex=S.wood(seed=3, spacing=5))
     if branch == "fire":
-        c.disc(40, arm_y - 9, 2, BLACK)
-        c.line(36, arm_y - 16, 45, arm_y - 18, BLACK)
-        c.line(37, arm_y - 12, 44, arm_y - 11, BLACK)
-    elif branch == "concussion":
-        c.hline(35, arm_y - 17, 11, BLACK)
-        c.hline(35, arm_y - 13, 11, BLACK)
-    return c
+        S.ellipsoid(tc, arm_x, arm_y - 1, 4.5, 3.5, 0.45, spec=0.3)
+        for i, (dx, h) in enumerate(((-2, 6), (0, 9), (2, 5))):
+            S.capsule(tc, arm_x + dx, arm_y - 3, arm_x + dx + 1, arm_y - 3 - h,
+                      2.2 - i * 0.3, 1.1)
+        S.glint(tc, arm_x, arm_y - 6, 1)
+    else:
+        load = 4.5 if branch == "concussion" else 3.5 + level * 0.3
+        S.ellipsoid(tc, arm_x, arm_y - 1, 4, 2.5, 0.5)
+        S.ellipsoid(tc, arm_x, arm_y - 3, load, load, 0.95, spec=0.25,
+                    tex=S.fur(seed=13, depth=0.12))
+        if branch == "concussion":
+            # Iron banding round the shot.
+            for dy in (-1, 2):
+                for x in range(int(arm_x - load), int(arm_x + load) + 1):
+                    if tc.get(x, arm_y - 3 + dy) is not None:
+                        tc.scale(x, arm_y - 3 + dy, 0.35)
+    if level >= 2:
+        # A stone counterweight box hung behind the pivot.
+        S.box(tc, cx + 5, pivot_y + 3, 8, 7, 4, 0.8,
+              tex=S.flat_masonry(course=4, block=5, seed=8), top_albedo=1.1)
+    S.occlude(tc, base - 5, 6, 0.25)
+    return tc.to_canvas()
 
 
-# --------------------------------------------------------------- enemies
+# The view fires bolts and beams from fixed heights over a tower's foot
+# (fl_muzzle_height in the model): the orb and the eye sit right there.
+STORM_ORB_ROW = UNIT_CELL - FOOT - 34
+RUNE_EYE_ROW = UNIT_CELL - FOOT - 34
+EMBER_BOWL_ROW = UNIT_CELL - FOOT - 30
+
+
+def _copper_coil(tc, cx, y, r):
+    """A dark band of wound wire round a column, with a lit top edge."""
+    S.cylinder(tc, cx, y, y + 2, r, 0.45, lid=0.3, spec=0.6)
+    for x in range(int(cx - r) + 1, int(cx + r)):
+        if tc.get(x, y) is not None:
+            tc.put(x, y, tc.get(x, y) + 0.35)
+
+
+def _storm_tower(level, branch=None):
+    """A slim stone spire wound with copper, an iron cage on top holding a
+    caught storm: the orb the lightning leaps from."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    orb_y = STORM_ORB_ROW
+    S.shadow_ellipse(tc, cx + 6, base + 1, 17, 4.5, 0.5)
+
+    stone_plinth(tc, cx, base, 13, height=5, seed=21)
+    # The shaft tapers: a broad drum, then a narrower one.
+    S.cylinder(tc, cx, base - 16, base - 5, 10, 0.95,
+               tex=S.masonry(10, course=5, blocks=6, seed=22), cap=0.6)
+    top = orb_y + 7
+    S.cylinder(tc, cx, top, base - 16, 6 + (level > 1), 0.92,
+               tex=S.masonry(6, course=4, blocks=5, seed=23), cap=0.7)
+    _rect(tc, cx - 3, base - 13, cx - 1, base - 9, 0.05)
+    for y in range(top + 4, base - 16, 6):
+        _copper_coil(tc, cx, y, 6.5 + (level > 1))
+
+    if level >= 2:
+        # Two lightning rods brace the cage, their tips glinting.
+        for side in (-1, 1):
+            S.capsule(tc, cx + side * 6, top + 10, cx + side * 11, orb_y - 4,
+                      1.4, 0.6 if side > 0 else 0.85, spec=0.6)
+            S.glint(tc, int(cx + side * 11), int(orb_y - 5), 0)
+
+    # The cage: four iron ribs round the orb, and the orb itself, white hot.
+    radius = 4.5 + level * 0.5
+    if branch == "static":
+        radius += 1.0
+    # The back ribs, the orb, then the two ribs that cross in front of it.
+    for dx in (-radius * 0.35, radius * 0.35):
+        S.capsule(tc, cx + dx, top, cx + dx, orb_y - radius, 1.0, 0.3)
+    S.ellipsoid(tc, cx, orb_y, radius, radius, 1.2, spec=0.9)
+    S.ellipsoid(tc, cx - 1, orb_y - 1, radius * 0.5, radius * 0.5, 1.4)
+    for dx in (-radius - 1, radius + 1):
+        S.capsule(tc, cx + dx * 0.8, top, cx + dx, orb_y - radius * 0.3, 1.2,
+                  0.4, spec=0.4)
+        S.capsule(tc, cx + dx, orb_y - radius * 0.3, cx + dx * 0.3,
+                  orb_y - radius - 1, 1.2, 0.4, spec=0.4)
+    S.capsule(tc, cx - radius - 1, top, cx + radius + 1, top, 1.6, 0.4)
+    S.capsule(tc, cx, orb_y - radius - 1, cx, orb_y - radius - 6, 1.2,
+              0.55, spec=0.6)
+    S.glint(tc, int(cx - 1), int(orb_y - 1), 1)
+
+    if branch == "static":
+        # Charged stones float round the cage, each casting its own shadow.
+        for i in range(5):
+            angle = i / 5.0 * 2 * math.pi + 0.3
+            sx = cx + math.cos(angle) * (radius + 9)
+            sy = orb_y + 3 + math.sin(angle) * 3.5
+            S.ellipsoid(tc, sx, sy, 2.2, 1.8, 0.95, spec=0.4)
+    elif branch == "tempest":
+        # A thunderhead boils over the rod, a bolt hanging from it.
+        for dx, dy, r in ((-6, -8, 4.0), (0, -10, 5.0), (6, -8, 4.0),
+                          (-2, -6, 3.5)):
+            S.ellipsoid(tc, cx + dx, orb_y + dy, r, r * 0.8, 0.55,
+                        tex=S.fur(31, depth=0.1))
+        for y0, x0, y1, x1 in ((-4, 3, 0, 6), (0, 6, 3, 4)):
+            S.capsule(tc, cx + x0, orb_y + y0, cx + x1, orb_y + y1, 1.2, 1.2)
+    S.occlude(tc, base - 5, 6, 0.25)
+    return tc.to_canvas()
+
+
+def _rune_glyph(tc, x, y, kind, tone):
+    """A carved rune, three or four strokes deep into the face."""
+    strokes = (
+        ((0, 0, 0, 5), (0, 1, 2, 3)),
+        ((0, 0, 0, 5), (0, 0, 2, 2), (0, 2, 2, 4)),
+        ((1, 0, 1, 5), (0, 1, 2, 3), (2, 1, 0, 3)),
+    )[kind % 3]
+    for x0, y0, x1, y1 in strokes:
+        steps = max(abs(x1 - x0), abs(y1 - y0))
+        for s in range(steps + 1):
+            t = s / max(1, steps)
+            tc.put(int(x + x0 + (x1 - x0) * t), int(y + y0 + (y1 - y0) * t),
+                   tone)
+
+
+def _rune_tower(level, branch=None):
+    """A four-sided obelisk on a stepped base, runes cut down its faces and
+    an eye of light near the top: the beam leaves from there."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    eye_y = RUNE_EYE_ROW
+    S.shadow_ellipse(tc, cx + 6, base + 1, 18, 4.5, 0.5)
+
+    # Two stepped slabs of dressed stone.
+    S.box(tc, cx - 12, base - 5, 22, 5, 5, 0.85,
+          tex=S.flat_masonry(course=5, block=7, seed=41), top_albedo=1.2)
+    S.box(tc, cx - 9, base - 9, 16, 4, 4, 0.9,
+          tex=S.flat_masonry(course=4, block=6, seed=42), top_albedo=1.25)
+
+    tall = branch == "obelisk"
+    half_base = 6.0 + (level > 1)
+    half_top = 3.5
+    top = eye_y - (7 if tall else 4) - level
+    bottom = base - 9
+    # The lit west face and the shaded east face of the shaft.
+    lit_face = [(cx - half_base, bottom), (cx, bottom + 1), (cx, top + 2),
+                (cx - half_top, top + 3)]
+    dark_face = [(cx, bottom + 1), (cx + half_base, bottom),
+                 (cx + half_top, top + 3), (cx, top + 2)]
+    S.polygon(tc, lit_face, (-0.7, -0.1, 0.7), 0.98,
+              tex=lambda x, y, u, v: (S.hash01(x, y // 3, 43) - 0.5) * 0.08)
+    S.polygon(tc, dark_face, (0.8, -0.1, 0.55), 0.78)
+    # The capstone: a little pyramid, gilt bright on the lit side.
+    S.polygon(tc, [(cx - half_top, top + 3), (cx, top - 4), (cx, top + 2)],
+              (-0.6, -0.6, 0.6), 1.2, spec=0.7)
+    S.polygon(tc, [(cx, top + 2), (cx, top - 4), (cx + half_top, top + 3)],
+              (0.6, -0.5, 0.6), 0.8)
+
+    # Runes carved down the lit face, glowing faintly on the dark one.
+    for i, y in enumerate(range(eye_y + 7, bottom - 5, 7)):
+        _rune_glyph(tc, cx - 4, y, i + level, 0.08)
+        _rune_glyph(tc, cx + 1, y + 2, i + 1, 1.0)
+
+    # The eye: a lens of light held in a dark socket.
+    S.ellipsoid(tc, cx - 0.5, eye_y, 3.2, 2.4, 0.05)
+    S.ellipsoid(tc, cx - 0.5, eye_y, 2.2, 1.6, 1.2, spec=0.9)
+    S.glint(tc, int(cx - 1), int(eye_y), 0)
+
+    if level >= 2:
+        # Two standing stones keep watch either side.
+        for side, albedo in ((-1, 0.95), (1, 0.75)):
+            sx = cx + side * 14
+            S.polygon(tc, [(sx - 2.5, base - 4), (sx + 2.5, base - 4),
+                           (sx + 1.5, base - 15), (sx - 1.5, base - 16)],
+                      (side * 0.6, -0.1, 0.8), albedo)
+            _rune_glyph(tc, sx - 1, base - 13, side + 2, 0.1)
+    if branch == "prism":
+        # A crystal prism sits on the capstone and splits the light.
+        crystal(tc, cx, top - 9, top - 1, 3.2, albedo=1.05)
+        S.glint(tc, int(cx - 1), int(top - 6), 1)
+    elif tall:
+        # Rune stones orbit the shaft, lifted off the ground by the spell.
+        for i in range(4):
+            angle = i / 4.0 * 2 * math.pi + 0.8
+            sx = cx + math.cos(angle) * 13
+            sy = eye_y + 10 + math.sin(angle) * 4
+            S.box(tc, sx - 2, sy - 2, 4, 4, 2, 0.9, top_albedo=1.2)
+            tc.put(int(sx), int(sy), 0.05)
+    S.occlude(tc, base - 5, 6, 0.25)
+    return tc.to_canvas()
+
+
+def _barracks_tower(level, branch=None):
+    """A timber longhall on a stone footing: pitched shingle roof, a broad
+    door the garrison marches out of, shields hung along the eaves."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    S.shadow_ellipse(tc, cx + 6, base + 1, 23, 5, 0.5)
+
+    width = 30 + level * 2
+    left = cx - width // 2 - 2
+    wall_top = base - 14 - level * 2
+    # Footing, then walls: stone to the sill on a hall of level 2 and up.
+    S.box(tc, left - 1, base - 4, width + 2, 4, 5, 0.85,
+          tex=S.flat_masonry(course=4, block=6, seed=51), top_albedo=1.1)
+    wall_tex = (S.flat_masonry(course=4, block=7, seed=52) if level > 1
+                else S.wood(seed=53, spacing=3, vertical=True))
+    S.box(tc, left, wall_top, width, base - 4 - wall_top, 5, 0.9,
+          tex=wall_tex)
+    # A hipped roof: the long slope faces the viewer, a short hip turns
+    # away on the right, and snow lies along the ridge.
+    ridge = wall_top - 10 - level
+    eave = wall_top + 2
+    right = left + width
+    inset = 6
+
+    def courses(x, y, _u, _v):
+        # Shingle rows with staggered butt joints.
+        row = int(y - ridge)
+        if row % 3 == 0:
+            return -0.35
+        return -0.2 if (int(x) + (row // 3) * 2) % 5 == 0 else 0.0
+    S.polygon(tc, [(left - 3, eave), (right + 2, eave), (right - inset, ridge),
+                   (left + inset - 2, ridge)], (-0.15, -0.75, 0.65), 1.05,
+              tex=courses)
+    S.polygon(tc, [(right + 2, eave), (right + 5, eave - 3),
+                   (right - inset + 1, ridge), (right - inset, ridge)],
+              (0.85, -0.4, 0.4), 0.7, tex=courses)
+    S.polygon(tc, [(left - 3, eave), (left + inset - 2, ridge),
+                   (left + inset - 4, ridge + 1)], (-0.9, -0.3, 0.4), 1.0)
+    _snow_cap(tc, (left + right) / 2.0, ridge, (right - left) / 2.0 - inset,
+              depth=2)
+    # Crossed gable horns at both ends of the ridge, the old northern way.
+    for gx in (left + inset - 2, right - inset):
+        S.capsule(tc, gx - 3, ridge - 4, gx + 1, ridge, 1.3, 0.75)
+        S.capsule(tc, gx + 3, ridge - 4, gx - 1, ridge, 1.3, 0.55)
+    # The door, and the torch-dark inside it.
+    _arch_door(tc, cx - 1, base - 4, 8, 10)
+    S.capsule(tc, cx - 6, base - 15, cx + 4, base - 15, 1.6, 0.6)
+
+    # Round shields along the wall, alternating light and dark paint.
+    for i, sx in enumerate((left + 4, left + width - 5)):
+        S.ellipsoid(tc, sx, wall_top + 5, 3.2, 3.4, 1.0 if i == 0 else 0.6,
+                    depth=0.5, spec=0.3)
+        S.ellipsoid(tc, sx, wall_top + 5, 1.0, 1.0, 1.2, spec=0.8)
+
+    if level >= 2:
+        # A banner on a pole by the door.
+        px = left + width + 1
+        S.capsule(tc, px, base - 2, px, ridge - 2, 1.4, 0.6)
+        S.polygon(tc, [(px + 1, ridge - 2), (px + 8, ridge),
+                       (px + 1, ridge + 6)], (-0.2, -0.1, 1.0), 0.9,
+                  tex=S.folds(3))
+    if branch == "veterans":
+        # A rack of spears leaning by the door, steel heads catching light.
+        for i in range(3):
+            x = left + 2 + i * 2
+            S.capsule(tc, x, base - 3, x + 2, wall_top - 6, 1.0, 0.7)
+            S.glint(tc, int(x + 2), int(wall_top - 7), 0)
+    elif branch == "berserk":
+        # An elk skull over the door, antlers spread wide.
+        sy = wall_top + 1
+        S.ellipsoid(tc, cx - 1, sy, 2.6, 3, 1.1, spec=0.4)
+        tc.put(int(cx - 2), int(sy), 0.05)
+        tc.put(int(cx), int(sy), 0.05)
+        for side in (-1, 1):
+            S.capsule(tc, cx - 1 + side * 2, sy - 2, cx - 1 + side * 8, sy - 7,
+                      1.2, 1.0)
+            S.capsule(tc, cx - 1 + side * 5, sy - 4, cx - 1 + side * 5,
+                      sy - 9, 1.0, 1.0)
+    S.occlude(tc, base - 4, 6, 0.25)
+    return tc.to_canvas()
+
+
+def _ember_tower(level, branch=None):
+    """A squat stone kiln banded in iron with a fire cauldron on top. The
+    pots it lobs are filled from the cauldron; the slits glow."""
+    tc = _tower_canvas()
+    cx, base = 27, UNIT_CELL - FOOT
+    S.shadow_ellipse(tc, cx + 6, base + 1, 19, 4.5, 0.5)
+
+    stone_plinth(tc, cx, base, 15, height=5, seed=61)
+    # The kiln: a broad stone drum, then a narrower collar the bowl sits in.
+    r = 11 + level
+    bowl_y = EMBER_BOWL_ROW
+    collar = bowl_y + 5
+    S.cylinder(tc, cx, collar + 6, base - 5, r, 0.95,
+               tex=S.masonry(r, course=5, blocks=7, seed=62))
+    S.cylinder(tc, cx, collar, collar + 6, r - 3, 0.9,
+               tex=S.masonry(r - 3, course=3, blocks=6, seed=63), cap=0.3)
+    # An iron band round the drum.
+    for y in (collar + 9,):
+        for x in range(int(cx - r), int(cx + r) + 1):
+            if tc.get(x, y) is not None:
+                tc.put(x, y, 0.12)
+    # Fire slits and the stoke hole, white with heat in the dark stone.
+    _arch_door(tc, cx - 2, base - 5, 7, 7, tone=0.02)
+    _arch_door(tc, cx - 2, base - 6, 3, 4, tone=1.0)
+    for sx in (cx - 8, cx + 4):
+        _rect(tc, sx, collar + 11, sx + 2, collar + 15, 1.0)
+
+    # The cauldron: a heavy black iron bowl on three stubby legs, its lip
+    # catching the firelight, the fire roaring up out of it.
+    bowl_r = 9 + level * 0.5
+    # The bowl is near black so the fire over it is the brightest thing on
+    # the tower; only a thin lit lip and one glint say it is iron.
+    S.ellipsoid(tc, cx, bowl_y + 1, bowl_r, 4.5, 0.12)
+    for x in range(int(cx - bowl_r) + 1, int(cx + bowl_r)):
+        tc.put(x, bowl_y - 2, 0.05)
+    S.ellipsoid(tc, cx, bowl_y - 2, bowl_r - 1, 1.4, 1.3)
+    S.glint(tc, int(cx - bowl_r + 3), int(bowl_y + 1), 0)
+    tongues = ((-4, 7, 3.0), (0, 11 + level * 2, 3.8), (4, 8, 2.8))
+    if branch == "wildfire":
+        tongues = ((-6, 9, 2.6), (-2, 14, 3.4), (2, 12, 3.2), (6, 8, 2.4))
+    for dx, h, w in tongues:
+        S.cone(tc, cx + dx, bowl_y - 2 - h, bowl_y - 2, w, 1.3, lid=0.5)
+    # Dark licks inside the blaze, so it reads as tongues, not a cone.
+    for dx, h, _w in tongues:
+        for y in range(int(bowl_y - 2 - h * 0.55), int(bowl_y - 3)):
+            tc.put(int(cx + dx + (1 if dx <= 0 else -1)), y, 0.05)
+    if branch == "magma":
+        # Molten rock spills over the lip and runs down the stones.
+        for dx, length in ((-7, 10), (6, 14), (-1, 8)):
+            S.capsule(tc, cx + dx, bowl_y + 2, cx + dx * 1.1, bowl_y + length,
+                      2.2, 1.2, spec=0.4)
+    if level >= 2:
+        # Stacked fire pots waiting by the kiln, plugged with rag.
+        for i, (px, py) in enumerate(((cx - r - 3, base - 6),
+                                      (cx + r + 3, base - 5))):
+            S.ellipsoid(tc, px, py, 3, 3.2, 0.7 if i else 0.95, spec=0.3)
+            S.capsule(tc, px, py - 3, px + 1, py - 5, 1.2, 1.0)
+    S.occlude(tc, base - 5, 6, 0.25)
+    return tc.to_canvas()
+
+
+# ----------------------------------------------------------------------
+# The rank and file (40 px cells)
+# ----------------------------------------------------------------------
+
+
+def _enemy_canvas(size=PROP_CELL):
+    return S.ToneCanvas(size, size)
+
+
 def _enemy_wolf(frame):
-    """Frost wolf: a low black mass with a white belly and notched fur."""
-    c = _canvas(PROP_CELL)
-    bob = (0, -1, 0, 1)[frame % 4]
-    body_y = 18 + bob
-    stride = (2, 0, -2, 0)[frame % 4]
+    """A grey wolf at a lope: pale belly, dark saddle, ears up."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    swing = 4.0 * math.sin(p)
+    bob = -1.2 * abs(math.sin(p))
+    S.shadow_ellipse(tc, 21, feet + 1, 14, 3, 0.5)
 
-    # Tail sweeping back and down.
-    fill_polygon(c, [(9, body_y - 1), (5, body_y - 4), (0, body_y + 2),
-                     (4, body_y + 3), (9, body_y + 2)], BLACK)
-    c.line(6, body_y, 2, body_y + 1, WHITE)
+    # Far legs first, darker because they are in the body's shadow.
+    S.capsule(tc, 12, 24 + bob, 12 - swing, feet, 3.2, 0.45)
+    S.capsule(tc, 28, 24 + bob, 28 + swing, feet, 3.2, 0.45)
 
-    # Body: a sloped back, a deep chest, a tucked waist.
-    fill_polygon(c, [(8, body_y - 1), (11, body_y - 4), (16, body_y - 5),
-                     (20, body_y - 2), (23, body_y + 1), (22, body_y + 5),
-                     (10, body_y + 5), (8, body_y + 2)], BLACK)
-    # White belly and flank carving.
-    fill_polygon(c, [(12, body_y + 3), (19, body_y + 2), (22, body_y + 3),
-                     (21, body_y + 5), (12, body_y + 5)], WHITE)
-    c.line(12, body_y - 2, 15, body_y + 1, WHITE)
-    c.line(17, body_y - 3, 19, body_y, WHITE)
+    def coat(x, y, u, v):
+        saddle = -0.22 if v < -0.15 else 0.0
+        belly = 0.3 if v > 0.35 else 0.0
+        return saddle + belly + S.fur(1)(x, y, u, v)
 
-    # Neck and head.
-    fill_polygon(c, [(20, body_y - 2), (22, body_y - 8), (25, body_y - 10),
-                     (29, body_y - 8), (31, body_y - 5), (28, body_y - 3),
-                     (24, body_y - 4), (21, body_y - 1)], BLACK)
-    c.fill_rect(27, body_y - 8, 2, 2, WHITE)        # eye
-    c.fill_rect(29, body_y - 5, 2, 1, WHITE)        # tooth
-    fill_polygon(c, [(22, body_y - 8), (22, body_y - 13), (25, body_y - 9)], BLACK)
-    c.line(23, body_y - 10, 24, body_y - 9, WHITE)  # inner ear
-    c.line(24, body_y - 6, 27, body_y - 6, WHITE)   # jaw
+    # A bushy tail, then the body, the ruff and the head.
+    S.capsule(tc, 8, 19 + bob, 2, 23 + bob - swing * 0.4, 4.5, 0.75,
+              tex=S.fur(2))
+    S.ellipsoid(tc, 19, 21 + bob, 11.5, 6.5, 0.9, tex=coat)
+    S.ellipsoid(tc, 28, 18 + bob, 5.5, 6.5, 0.95, tex=S.fur(4))
+    S.ellipsoid(tc, 32, 15 + bob, 5, 4.5, 0.95, tex=S.fur(5))
+    S.ellipsoid(tc, 37, 17 + bob, 3.4, 2.2, 1.0)
+    tc.put(39, 16 + bob, 0.0)
+    S.polygon(tc, [(29, 12 + bob), (30, 6 + bob), (33, 11 + bob)],
+              (-0.5, -0.3, 0.8), 0.85)
+    S.polygon(tc, [(32, 11 + bob), (34, 6 + bob), (35, 11 + bob)],
+              (0.6, -0.3, 0.7), 0.7)
+    tc.put(33, 14 + bob, 0.0)
+    tc.put(34, 14 + bob, 0.0)
 
-    # Legs with a knee and a paw.
-    for x, extra in ((10, 0), (13, stride), (19, -stride), (22, 0)):
-        length = 6 - abs(extra) // 2
-        c.fill_rect(x, body_y + 4, 3, length, BLACK)
-        c.fill_rect(x - 1 + extra // 2, body_y + 4 + length, 4, 2, BLACK)
-        c.set(x + 1, body_y + 5, WHITE)
+    # Near legs, lit.
+    S.capsule(tc, 15, 24 + bob, 15 + swing, feet, 3.2, 0.9)
+    S.capsule(tc, 25, 24 + bob, 25 - swing, feet, 3.2, 0.9)
+    return tc.to_canvas()
 
-    # Snow along the spine.
-    c.hline(12, body_y - 4, 5, WHITE)
-    c.hline(15, body_y - 5, 4, WHITE)
-    return c
+
+def _legs(tc, hip_x, hip_y, feet, swing, width=3.2, near=0.75, far=0.4):
+    """A walking pair: the far leg in shade, the near leg lit."""
+    S.capsule(tc, hip_x + 2, hip_y, hip_x + 2 - swing, feet, width, far)
+    S.capsule(tc, hip_x - 1, hip_y, hip_x - 1 + swing, feet, width, near)
 
 
 def _enemy_raider(frame):
-    """Raider: hooded, cloaked, carrying a broad axe."""
-    c = _canvas(PROP_CELL)
-    bob = (0, 1, 0, -1)[frame % 4]
-    top = 5 + bob
+    """A northern raider: fur cloak, horned helm, round shield and axe."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    swing = 3.0 * math.sin(p)
+    bob = -abs(math.sin(p))
+    S.shadow_ellipse(tc, 21, feet + 1, 11, 3, 0.5)
 
-    # Axe behind the figure: haft, then a broad blade with a lit edge.
-    c.fill_rect(21, top + 3, 2, 16, BLACK)
-    c.fill_rect(22, top + 6, 1, 10, WHITE)
-    # A wedge blade with a lit edge, not a blob.
-    fill_polygon(c, [(20, top + 1), (29, top + 3), (29, top + 11),
-                     (20, top + 9)], BLACK)
-    c.fill_rect(21, top + 3, 7, 1, WHITE)
-    c.fill_rect(21, top + 7, 6, 1, WHITE)
-
-    # Cloak: a solid black mass, wide at the hem.
-    fill_polygon(c, [(8, top + 18), (10, top + 10), (13, top + 6),
-                     (19, top + 6), (21, top + 11), (22, top + 18)], BLACK)
-    c.line(12, top + 9, 10, top + 17, WHITE)
-    c.line(16, top + 8, 16, top + 17, WHITE)
-    c.line(19, top + 10, 20, top + 17, WHITE)
-
-    # Hood with a carved face opening and two eyes.
-    fill_polygon(c, [(10, top + 9), (12, top + 2), (17, top + 1),
-                     (20, top + 6), (19, top + 10)], BLACK)
-    fill_polygon(c, [(13, top + 8), (14, top + 4), (18, top + 4),
-                     (18, top + 8)], WHITE)
-    c.fill_rect(14, top + 6, 2, 2, BLACK)
-    c.fill_rect(17, top + 6, 1, 2, BLACK)
-    c.line(12, top + 9, 19, top + 9, WHITE)
-
-    # Belt and legs.
-    c.fill_rect(8, top + 17, 14, 3, BLACK)
-    c.fill_rect(9, top + 18, 12, 1, WHITE)
-    c.fill_rect(11, top + 20, 4, 6, BLACK)
-    c.fill_rect(17, top + 20, 4, 6, BLACK)
-    c.fill_rect(12, top + 21, 1, 4, WHITE)
-    c.fill_rect(18, top + 21, 1, 4, WHITE)
-    return c
+    _legs(tc, 20, 25 + bob, feet, swing, width=3.6, near=0.55, far=0.3)
+    # Axe behind the shoulder, so the shield arm overlaps it.
+    S.capsule(tc, 25, 26 + bob, 30, 9 + bob, 1.8, 0.6,
+              tex=S.wood(seed=2, spacing=3))
+    S.polygon(tc, [(29, 8 + bob), (36, 6 + bob), (35, 15 + bob),
+                   (30, 13 + bob)], (0.2, -0.2, 1.0), 1.0, spec=0.6)
+    # Fur-trimmed body.
+    S.ellipsoid(tc, 20, 20 + bob, 7, 8, 0.85, tex=S.fur(3, depth=0.12))
+    S.capsule(tc, 14, 15 + bob, 26, 15 + bob, 4, 1.0, tex=S.fur(6))
+    S.capsule(tc, 15, 26 + bob, 25, 26 + bob, 2, 0.4)
+    # Head and helm, horns catching the light.
+    S.ellipsoid(tc, 20, 10 + bob, 4.5, 4.5, 0.95)
+    S.ellipsoid(tc, 20, 8 + bob, 5, 3.4, 0.75, spec=0.7)
+    S.capsule(tc, 16, 8 + bob, 12, 3 + bob, 1.6, 1.0)
+    S.capsule(tc, 24, 8 + bob, 28, 3 + bob, 1.6, 0.85)
+    _rect(tc, 17, 11 + bob, 24, 12 + bob, 0.08)
+    # Round shield on the near arm: domed boards and an iron boss.
+    def boards(x, y, u, v):
+        ring = math.sqrt(u * u + v * v)
+        if ring > 0.82:
+            return -0.3
+        return -0.2 if int(x) % 3 == 0 else 0.0
+    S.ellipsoid(tc, 13, 21 + bob, 6.5, 7, 0.95, depth=0.5, tex=boards)
+    S.ellipsoid(tc, 13, 21 + bob, 2, 2, 1.0, spec=0.8)
+    return tc.to_canvas()
 
 
 def _enemy_skitter(frame):
-    """Ice skitter: a low six-legged crawler that scuttles."""
-    c = _canvas(PROP_CELL)
-    bob = (0, -1, 0, 1)[frame % 4]
-    body_y = 17 + bob
-    stride = (2, 0, -2, 0)[frame % 4]
+    """An ice beetle: a glossy domed shell scuttling on six legs."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    S.shadow_ellipse(tc, 21, feet + 1, 15, 3.5, 0.5)
+    body_y = feet - 7
 
-    # Six legs, drawn as thin white strokes off a black body.
-    for index, (x, spread) in enumerate(((6, -1), (9, 0), (13, 1), (17, 0),
-                                         (21, -1), (24, 0))):
-        reach = stride if index % 2 == 0 else -stride
-        c.line(x, body_y + 2, x + spread * 4, body_y + 9 + reach, BLACK)
-        c.line(x + spread * 4, body_y + 9 + reach,
-               x + spread * 6, body_y + 13 + reach, BLACK)
-
-    # Body: a dark carapace with a pale seam.
-    fill_polygon(c, [(7, body_y - 2), (13, body_y - 5), (21, body_y - 4),
-                     (26, body_y), (21, body_y + 4), (12, body_y + 4)], BLACK)
-    c.line(12, body_y - 1, 20, body_y - 2, WHITE)
-    c.line(13, body_y + 1, 19, body_y, WHITE)
-    # Eyes and mandibles.
-    c.fill_rect(23, body_y - 2, 2, 2, WHITE)
-    c.fill_rect(26, body_y - 1, 2, 1, WHITE)
-    c.line(27, body_y + 1, 30, body_y + 2, BLACK)
-    c.line(27, body_y + 2, 30, body_y + 4, BLACK)
-    return c
-
-
-def _enemy_husk(frame):
-    """Frost husk: a broad armoured brute that barely hurries."""
-    c = _canvas(40)
-    bob = (0, -1, 0, 1)[frame % 4]
-    base = 37 + bob
-    stride = (2, 0, -2, 0)[frame % 4]
-
-    # Legs.
-    for x, extra in ((10, 0), (15, stride), (24, -stride), (29, 0)):
-        c.fill_rect(x, base - 8, 5, 9, BLACK)
-        c.fill_rect(x - 1 + extra // 2, base + 1, 7, 3, BLACK)
-        c.fill_rect(x + 1, base - 7, 1, 7, WHITE)
-
-    # Torso: a heavy black mass with plate seams.
-    fill_polygon(c, [(6, base - 8), (34, base - 8), (31, base - 24),
-                     (24, base - 28), (16, base - 28), (9, base - 24)], BLACK)
-    c.hline(9, base - 20, 22, WHITE)
-    c.hline(11, base - 14, 18, WHITE)
-    c.vline(20, base - 26, 16, WHITE)
-    # Pauldrons.
-    c.fill_rect(2, base - 26, 10, 8, BLACK)
-    c.fill_rect(28, base - 26, 10, 8, BLACK)
-    c.fill_rect(4, base - 24, 6, 1, WHITE)
-    c.fill_rect(30, base - 24, 6, 1, WHITE)
-    # A small head sunk between the shoulders.
-    fill_polygon(c, [(15, base - 28), (25, base - 28), (23, base - 34),
-                     (17, base - 34)], BLACK)
-    c.fill_rect(18, base - 31, 2, 2, WHITE)
-    c.fill_rect(21, base - 31, 2, 2, WHITE)
-    return c
+    for i, lx in enumerate((10, 19, 28)):
+        step = 3.0 * math.sin(p + i * 2.1)
+        S.capsule(tc, lx + 2, body_y, lx + 6 + step, feet - 1, 1.8, 0.35)
+    def shell(x, y, u, v):
+        seam = -0.5 if abs(u) < 0.07 else 0.0
+        ridge = -0.18 if 0.45 < math.sqrt(u * u + v * v) < 0.52 else 0.0
+        return seam + ridge
+    S.ellipsoid(tc, 19, body_y - 3, 12, 8, 0.95, spec=0.9, tex=shell)
+    S.ellipsoid(tc, 31, body_y, 4.5, 3.5, 0.5, spec=0.5)
+    S.capsule(tc, 34, body_y + 1, 38, body_y - 1, 1.2, 0.8)
+    S.capsule(tc, 34, body_y + 2, 38, body_y + 4, 1.2, 0.6)
+    for i, lx in enumerate((10, 19, 28)):
+        step = 3.0 * math.sin(p + i * 2.1 + math.pi)
+        S.capsule(tc, lx, body_y + 1, lx - 3 + step, feet, 1.8, 0.75)
+    S.glint(tc, 14, body_y - 8, 1)
+    return tc.to_canvas()
 
 
 def _enemy_shaman(frame):
-    """Shaman: a hooded figure dragging a rune staff."""
-    c = _canvas(PROP_CELL)
-    bob = (0, 1, 0, -1)[frame % 4]
-    top = 5 + bob
+    """A hooded frost shaman with a glowing staff orb."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    sway = 1.2 * math.sin(p)
+    S.shadow_ellipse(tc, 21, feet + 1, 11, 3, 0.5)
 
-    # Staff with a carved head.
-    c.fill_rect(25, top - 1, 2, 20, BLACK)
-    c.fill_rect(26, top + 1, 1, 16, WHITE)
-    c.disc(26, top - 3, 4, BLACK)
-    c.disc(26, top - 3, 2, WHITE)
-    c.fill_rect(25, top - 6, 2, 2, BLACK)
-
-    # Cloak.
-    fill_polygon(c, [(7, top + 18), (10, top + 9), (14, top + 6),
-                     (19, top + 7), (21, top + 14), (21, top + 18)], BLACK)
-    c.line(12, top + 10, 10, top + 17, WHITE)
-    c.line(16, top + 9, 16, top + 17, WHITE)
-    # Hood and the dark under it.
-    fill_polygon(c, [(10, top + 9), (12, top + 2), (17, top + 2),
-                     (20, top + 7), (19, top + 10)], BLACK)
-    c.fill_rect(13, top + 5, 2, 2, WHITE)
-    c.fill_rect(16, top + 5, 2, 2, WHITE)
-    # Arm reaching for the staff.
-    c.thick_line(18, top + 11, 25, top + 8, 2, BLACK)
-    return c
+    # Staff behind the robe.
+    S.capsule(tc, 28, feet, 28 + sway, 6, 1.8, 0.6,
+              tex=S.wood(seed=4, spacing=3))
+    # Robe: a cone of heavy cloth with folds, hem dragging in the snow.
+    S.cone(tc, 20 + sway * 0.4, 8, feet - 1, 10, 0.75, tex=S.folds(7, 0.2))
+    S.capsule(tc, 12, feet - 1, 28, feet - 1, 2.6, 0.55)
+    # Hood with a dark face and two cold eyes.
+    S.ellipsoid(tc, 20 + sway * 0.4, 10, 6, 6, 0.85, tex=S.folds(3, 0.1))
+    S.ellipsoid(tc, 21 + sway * 0.4, 12, 3.5, 3.5, 0.04)
+    tc.put(20 + sway * 0.4, 12, 1.0)
+    tc.put(23 + sway * 0.4, 12, 1.0)
+    # The hand on the staff and the orb, which pulses.
+    S.ellipsoid(tc, 27 + sway, 20, 2.4, 2.4, 0.9)
+    pulse = 3.0 + 0.8 * math.sin(p * 2)
+    S.ellipsoid(tc, 28 + sway, 5, pulse, pulse, 1.05, spec=0.9)
+    S.glint(tc, int(27 + sway), 4, 1 if frame % 2 == 0 else 0)
+    return tc.to_canvas()
 
 
 def _enemy_banner(frame):
-    """Banner man: the hardening comes from the flag over his head."""
-    c = _canvas(PROP_CELL)
-    bob = (0, 1, 0, -1)[frame % 4]
-    top = 6 + bob
+    """A standard bearer: the flag rallies the troops around him."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    swing = 2.6 * math.sin(p)
+    bob = -abs(math.sin(p))
+    S.shadow_ellipse(tc, 20, feet + 1, 12, 3, 0.5)
 
-    # Pole and flag.
-    c.fill_rect(24, 1, 2, 24, BLACK)
-    fill_polygon(c, [(26, 2), (31, 4), (28, 9), (26, 8)], BLACK)
-    c.fill_rect(27, 3, 2, 3, WHITE)
-    c.fill_rect(25, 1, 4, 2, BLACK)
+    # The pole and a cloth that ripples along its length.
+    S.capsule(tc, 24, feet - 4 + bob, 24, 2 + bob, 1.8, 0.6)
+    S.ellipsoid(tc, 24, 2 + bob, 1.8, 1.8, 1.0, spec=0.8)
+    wave = [math.sin(p + i * 0.9) * 1.8 for i in range(5)]
+    top = [(25 + i * 3, 4 + bob + wave[i]) for i in range(5)]
+    bottom = [(25 + i * 3, 15 + bob + wave[i] + i * 0.4) for i in range(5)]
+    cloth = top + list(reversed(bottom))
+    def ripple(x, y, _u, _v):
+        return 0.22 * math.sin(p + (x - 25) / 3.0 * 0.9 + 1.2)
+    S.polygon(tc, cloth, (-0.2, -0.1, 1.0), 0.85, tex=ripple)
+    # The rune on the flag.
+    _rect(tc, 30, 7 + bob, 32, 13 + bob, 0.1)
 
-    # Body.
-    fill_polygon(c, [(7, top + 17), (9, top + 9), (13, top + 5),
-                     (18, top + 6), (20, top + 17)], BLACK)
-    c.line(11, top + 10, 10, top + 16, WHITE)
-    c.line(15, top + 9, 15, top + 16, WHITE)
-    # Hood.
-    fill_polygon(c, [(10, top + 8), (12, top + 1), (17, top + 2),
-                     (19, top + 7)], BLACK)
-    c.fill_rect(13, top + 4, 2, 2, WHITE)
-    c.fill_rect(16, top + 4, 1, 2, WHITE)
-    # Arm on the pole.
-    c.thick_line(18, top + 10, 25, top + 8, 2, BLACK)
-    return c
+    _legs(tc, 18, 25 + bob, feet, swing, width=3.4, near=0.6, far=0.3)
+    S.ellipsoid(tc, 18, 20 + bob, 6, 7.5, 0.8, tex=S.folds(4, 0.14))
+    S.ellipsoid(tc, 18, 11 + bob, 4.2, 4.2, 0.95)
+    S.ellipsoid(tc, 18, 9 + bob, 4.6, 3, 0.6, spec=0.5)
+    _rect(tc, 16, 12 + bob, 21, 13 + bob, 0.08)
+    S.ellipsoid(tc, 23, 19 + bob, 2.2, 2.2, 0.9)
+    return tc.to_canvas()
 
 
 def _enemy_sap(frame):
-    """Sap: a runner with a lit charge on its back."""
-    c = _canvas(PROP_CELL)
-    bob = (0, -1, 0, 1)[frame % 4]
-    body_y = 17 + bob
-    stride = (3, 0, -3, 0)[frame % 4]
+    """A frost slime: a glossy blob that squashes as it creeps."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    squash = math.sin(p)
+    rx = 11 + 1.5 * squash
+    ry = 8 - 1.2 * squash
+    S.shadow_ellipse(tc, 21, feet + 1, rx + 3, 3, 0.5)
+    cy = feet - ry + 1
 
-    # The charge on its back: a black ball with a white fuse.
-    c.disc(13, body_y - 7, 6, BLACK)
-    c.disc(13, body_y - 7, 4, WHITE)
-    c.fill_rect(12, body_y - 8, 3, 3, BLACK)
-    c.line(16, body_y - 11, 20, body_y - 14, BLACK)
-    c.set(21, body_y - 15, BLACK)
-    c.set(22, body_y - 16, BLACK)
+    def bubbles(x, y, u, v):
+        for bx, by, br in ((-0.3, 0.2, 0.18), (0.35, 0.35, 0.12),
+                           (0.1, -0.1, 0.1)):
+            if (u - bx) ** 2 + (v - by) ** 2 < br * br:
+                return -0.45
+        return 0.0
+    S.ellipsoid(tc, 20, cy, rx, ry, 0.9, spec=1.0, tex=bubbles)
+    # Eyes riding high on the front of the blob.
+    for ex in (23, 27):
+        S.ellipsoid(tc, ex, cy - 2, 1.4, 1.9, 0.0)
+    S.glint(tc, 14, int(cy - ry * 0.5), 1)
+    return tc.to_canvas()
 
-    # Hunched body and head.
-    fill_polygon(c, [(10, body_y - 2), (16, body_y - 4), (22, body_y - 2),
-                     (24, body_y + 4), (12, body_y + 5)], BLACK)
-    fill_polygon(c, [(20, body_y - 6), (25, body_y - 7), (28, body_y - 3),
-                     (25, body_y - 1), (21, body_y - 2)], BLACK)
-    c.fill_rect(25, body_y - 6, 2, 2, WHITE)
-    c.line(14, body_y - 1, 18, body_y - 2, WHITE)
 
-    # Legs.
-    for x, extra in ((12, 0), (16, stride), (21, -stride)):
-        length = 6 - abs(extra) // 2
-        c.fill_rect(x, body_y + 4, 3, length, BLACK)
-        c.fill_rect(x - 1 + extra // 2, body_y + 4 + length, 4, 2, BLACK)
-    return c
+def _enemy_husk(frame):
+    """An armoured brute in banded plate, swinging a spiked mace."""
+    tc = _enemy_canvas(HUSK_CELL)
+    feet = HUSK_CELL - FOOT
+    p = _phase(frame)
+    swing = 3.0 * math.sin(p)
+    bob = -1.5 * abs(math.sin(p))
+    S.shadow_ellipse(tc, 25, feet + 1, 16, 4, 0.5)
+
+    _legs(tc, 24, 30 + bob, feet, swing, width=6, near=0.6, far=0.3)
+
+    def plate(x, y, u, v):
+        band = int(y - bob) % 5
+        return -0.35 if band == 0 else (0.08 if band == 1 else 0.0)
+    # Mace arm behind the body.
+    S.capsule(tc, 33, 20 + bob, 38, 30 + bob - swing, 3.6, 0.5)
+    S.capsule(tc, 38, 30 + bob - swing, 41, 18 + bob - swing, 1.8, 0.6)
+    S.ellipsoid(tc, 41, 16 + bob - swing, 4, 4, 0.75, spec=0.6)
+    for dx, dy in ((-4, 0), (4, 0), (0, -4)):
+        tc.put(41 + dx, 16 + bob - swing + dy, 0.0)
+    S.ellipsoid(tc, 24, 24 + bob, 12, 11, 0.9, spec=0.5, tex=plate)
+    # Pauldrons, domed and glinting.
+    S.ellipsoid(tc, 13, 17 + bob, 5.5, 5, 0.95, spec=0.8)
+    S.ellipsoid(tc, 34, 17 + bob, 5, 4.5, 0.85, spec=0.6)
+    # Helm with a dark visor slit.
+    S.ellipsoid(tc, 24, 11 + bob, 6, 6, 0.9, spec=0.8)
+    _rect(tc, 20, 11 + bob, 29, 13 + bob, 0.04)
+    S.capsule(tc, 24, 4 + bob, 24, 8 + bob, 1.6, 0.8)
+    # Near arm with a gauntlet.
+    S.capsule(tc, 13, 21 + bob, 11, 30 + bob + swing * 0.5, 4, 0.8,
+              spec=0.4, tex=plate)
+    S.ellipsoid(tc, 11, 31 + bob + swing * 0.5, 3, 3, 0.85, spec=0.5)
+    return tc.to_canvas()
 
 
 def _enemy_titan(frame):
-    """The frost titan: one creature, a heavy head and a cracked carapace."""
-    c = _canvas(64)
-    bob = (0, -1, 0, 1)[frame % 4]
-    base = 60 + bob
-    stride = (2, 0, -2, 0)[frame % 4]
+    """The ice titan: a hulking frame of rimed stone crowned with shards."""
+    tc = _enemy_canvas(TITAN_CELL)
+    feet = TITAN_CELL - FOOT
+    p = _phase(frame)
+    swing = 4.0 * math.sin(p)
+    bob = -2.0 * abs(math.sin(p))
+    S.shadow_ellipse(tc, 42, feet + 2, 28, 6, 0.5)
 
-    # Legs.
-    for x, extra in ((14, 0), (22, stride), (40, -stride), (48, 0)):
-        c.fill_rect(x, base - 14, 9, 15, BLACK)
-        c.fill_rect(x - 2 + extra // 2, base + 1, 13, 4, BLACK)
-        c.fill_rect(x + 2, base - 13, 2, 12, WHITE)
+    def rock(x, y, u, v):
+        # Cracked boulder skin: big cells with dark seams.
+        cell = S.hash01(int(x) // 6, int(y) // 5, 21)
+        seam = (int(x) + (int(y) // 5) * 3) % 6 == 0 or int(y) % 5 == 0
+        return (-0.28 if seam else 0.0) + (cell - 0.5) * 0.12
 
-    # Torso: a heavy black mass, narrower at the top.
-    fill_polygon(c, [(9, base - 12), (55, base - 12), (48, base - 36),
-                     (38, base - 42), (26, base - 42), (16, base - 36)], BLACK)
-    # Fractures in the ice.
-    c.line(20, base - 16, 26, base - 26, WHITE)
-    c.line(26, base - 26, 22, base - 33, WHITE)
-    c.line(26, base - 26, 33, base - 29, WHITE)
-    c.line(40, base - 18, 45, base - 28, WHITE)
-    c.line(45, base - 28, 41, base - 37, WHITE)
+    # Far arm and leg.
+    S.capsule(tc, 48, 48 + bob, 48 - swing, feet, 10, 0.4, tex=rock)
+    S.capsule(tc, 58, 28 + bob, 64, 50 + bob - swing, 9, 0.4, tex=rock)
+    S.ellipsoid(tc, 65, 53 + bob - swing, 6.5, 6, 0.45, tex=rock)
+    # Torso and the hunched back.
+    S.ellipsoid(tc, 40, 38 + bob, 21, 18, 0.9, tex=rock)
+    S.ellipsoid(tc, 41, 46 + bob, 14, 8, 0.75, tex=rock)
+    # Crown of ice on the shoulders.
+    crystal(tc, 26, 10 + bob, 26 + bob, 4.5, lean=-3)
+    crystal(tc, 33, 4 + bob, 24 + bob, 5, lean=-1)
+    crystal(tc, 52, 9 + bob, 25 + bob, 4, lean=2)
+    # The head, sunk between the shoulders, eyes burning white.
+    S.ellipsoid(tc, 42, 24 + bob, 8, 7, 0.85, tex=rock)
+    _rect(tc, 36, 23 + bob, 48, 27 + bob, 0.05)
+    S.glint(tc, 39, 25 + bob, 1)
+    S.glint(tc, 45, 25 + bob, 1)
+    # Near leg and the great near arm.
+    S.capsule(tc, 34, 48 + bob, 34 + swing, feet, 10, 0.8, tex=rock)
+    S.capsule(tc, 22, 28 + bob, 15, 50 + bob + swing, 10, 0.95, tex=rock)
+    S.ellipsoid(tc, 14, 54 + bob + swing, 7.5, 7, 0.95, tex=rock)
+    S.occlude(tc, feet, 6, 0.3)
+    return tc.to_canvas()
 
-    # Shoulders that sit on the torso rather than beside it.
-    fill_polygon(c, [(9, base - 12), (22, base - 14), (24, base - 30),
-                     (14, base - 34)], BLACK)
-    fill_polygon(c, [(55, base - 12), (42, base - 14), (40, base - 30),
-                     (50, base - 34)], BLACK)
-    c.line(12, base - 16, 21, base - 18, WHITE)
-    c.line(52, base - 16, 43, base - 18, WHITE)
 
-    # One big head, set straight on the shoulders.
-    fill_polygon(c, [(23, base - 40), (41, base - 40), (39, base - 54),
-                     (25, base - 54)], BLACK)
-    c.fill_rect(26, base - 50, 4, 4, WHITE)
-    c.fill_rect(35, base - 50, 4, 4, WHITE)
-    c.hline(29, base - 45, 7, WHITE)
-    # Horns of ice.
-    c.polygon([(24, base - 52), (16, base - 63), (28, base - 56)], BLACK)
-    c.polygon([(40, base - 52), (48, base - 63), (36, base - 56)], BLACK)
+# ----------------------------------------------------------------------
+# The deeper roster: birds, golems, slimes, burrowers and the two bosses
+# ----------------------------------------------------------------------
 
-    # Arms hanging at the sides.
-    for x, extra in ((8, stride), (50, -stride)):
-        c.thick_line(x + 4, base - 30, x + extra, base - 14, 7, BLACK)
-        c.thick_line(x + 4, base - 30, x + extra, base - 14, 2, WHITE)
-    return c
+
+CROW_BODY_Y = 22   # the body's row in its cell; the view hangs it there
+
+
+def _wing(tc, root_x, root_y, span, angle, albedo):
+    """A spread wing built the way a bird's is: a broad arm, a hand, and
+    primaries fanned behind the hand, all overlapping so the wing reads as
+    one solid sail. `angle` is the stroke in radians, 0 straight back,
+    negative raised, positive beaten down."""
+    def at(length, bend=0.0):
+        a = angle + bend
+        return root_x - math.cos(a) * length, root_y + math.sin(a) * length
+
+    elbow = at(span * 0.45)
+    hand = at(span * 0.8)
+
+    def coverts(x, y, _u, _v):
+        return -0.16 if int(x * 0.6 + y) % 3 == 0 else 0.0
+    S.capsule(tc, root_x, root_y, elbow[0], elbow[1], 6.5, albedo,
+              spec=0.5, tex=coverts)
+    S.capsule(tc, elbow[0], elbow[1], hand[0], hand[1], 5, albedo * 0.95,
+              tex=coverts)
+    # Primaries: each a little longer and swept further back than the last,
+    # so a lowered wing never hangs straight down like a leg.
+    for i in range(4):
+        tip = at(span * (0.95 + i * 0.04), -angle * 0.18 * (i + 1))
+        S.capsule(tc, hand[0], hand[1], tip[0], tip[1], 2.6, albedo * 0.85)
+
+
+def _enemy_crow(frame):
+    """A frost crow on the wing, glossy black with a pale beak. The view
+    draws it above the road with its shadow on the ground, so the cell
+    carries no shadow of its own."""
+    tc = _enemy_canvas()
+    p = _phase(frame)
+    stroke = 0.75 * math.cos(p) - 0.25   # frame 0 is the downbeat
+    bob = 1.5 * math.sin(p)       # the body rises as the wings beat down
+    cy = CROW_BODY_Y + bob
+
+    # The far wing peeks out above the body, always a beat behind.
+    _wing(tc, 22, cy - 2, 15, -0.55 - 0.45 * abs(stroke), 0.2)
+    # A wedge tail, then the body, the head and the beak.
+    S.polygon(tc, [(12, cy - 2), (3, cy - 4), (2, cy + 1), (4, cy + 4),
+                   (12, cy + 2)], (-0.2, 0.3, 0.9), 0.28,
+              tex=lambda x, y, _u, _v: -0.2 if int(y) % 2 == 0 else 0.0)
+    S.ellipsoid(tc, 19, cy, 10, 5.5, 0.32, spec=1.0, tex=S.fur(8, 0.06))
+    S.ellipsoid(tc, 29, cy - 3, 5, 4.4, 0.34, spec=1.0)
+    S.polygon(tc, [(32, cy - 4.5), (38, cy - 2), (32, cy - 0.5)],
+              (0.2, -0.4, 0.9), 1.0, spec=0.6)
+    S.glint(tc, 30, int(cy - 4), 0)
+    # Tucked feet under the belly.
+    S.capsule(tc, 18, cy + 5, 16, cy + 8, 1.4, 0.7)
+    S.capsule(tc, 21, cy + 5, 20, cy + 8, 1.4, 0.6)
+    _wing(tc, 21, cy - 1, 17, stroke, 0.48)
+    return tc.to_canvas()
+
+
+def _blob_eyes(tc, cx, cy, spread, size=1.4):
+    for ex in (cx - spread, cx + spread):
+        S.ellipsoid(tc, ex, cy, size, size * 1.35, 0.0)
+        tc.put(ex - 0.5, cy - size * 0.6, 1.0)
+
+
+def _enemy_slimelet(frame):
+    """A slimelet: a fist-sized gob of the big slime, hopping."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    hop = max(0.0, math.sin(p)) * 4.0
+    squash = math.cos(p * 2) * 0.12
+    rx = 7.0 * (1 + squash)
+    ry = 5.5 * (1 - squash)
+    S.shadow_ellipse(tc, 20, feet + 1, 8 - hop * 0.5, 2.4, 0.5)
+    cy = feet - ry + 1 - hop
+    S.ellipsoid(tc, 20, cy, rx, ry, 0.88, spec=1.0,
+                tex=lambda x, y, u, v: -0.4 if (u + 0.2) ** 2 + (v - 0.3) ** 2
+                < 0.03 else 0.0)
+    _blob_eyes(tc, 22, cy - 1, 2, 1.1)
+    S.glint(tc, 16, int(cy - ry * 0.5), 0)
+    return tc.to_canvas()
+
+
+def _enemy_slime(frame):
+    """The great slime. Three slimelets show through its glassy body, curled
+    up and waiting: the player sees what it will burst into."""
+    tc = _enemy_canvas(HUSK_CELL)
+    feet = HUSK_CELL - FOOT
+    p = _phase(frame)
+    squash = math.sin(p)
+    rx = 17 + 1.8 * squash
+    ry = 13 - 1.5 * squash
+    S.shadow_ellipse(tc, 25, feet + 1, rx + 3, 3.5, 0.5)
+    cy = feet - ry + 1
+    # A wobble that rolls over the top of the body.
+    def skin(x, y, u, v):
+        ripple = 0.1 * math.sin(u * 5 + p * 2) if v < -0.3 else 0.0
+        return ripple
+    S.ellipsoid(tc, 24, cy, rx, ry, 1.0, spec=0.6, depth=0.9, tex=skin)
+    # The brood inside, seen darkly through the jelly: three curled shapes,
+    # each with its own pair of pale eyes.
+    for i, (bx, by, br) in enumerate(((15, 5, 4.2), (29, 4, 4.6),
+                                       (22, -3, 3.8))):
+        drift = math.sin(p + i * 2.1) * 1.2
+        x = 24 + (bx - 22) * rx / 17 + drift
+        y = cy + by * ry / 13
+        S.ellipsoid(tc, x, y, br, br * 0.8, 0.22, spec=0.2)
+        tc.put(x, y - 1, 0.9)
+        tc.put(x + 2, y - 1, 0.9)
+    # The near skin over the brood keeps a highlight on top of everything.
+    S.ellipsoid(tc, 16, cy - ry * 0.6, 5, 2.2, 1.1, spec=1.0, depth=0.5)
+    _blob_eyes(tc, 32, cy - ry * 0.5, 3, 1.6)
+    S.glint(tc, 13, int(cy - ry * 0.65), 1)
+    # Drips at the hem.
+    for dx in (-10, 3, 12):
+        S.capsule(tc, 24 + dx, feet - 1, 24 + dx, feet + 1, 2, 0.6)
+    return tc.to_canvas()
+
+
+def _enemy_burrower(frame):
+    """A tunnelling grub: a ringed, plated body behind a pair of digging
+    claws and a drill snout. The segments ripple as it pulls itself on."""
+    tc = _enemy_canvas()
+    feet = PROP_CELL - FOOT
+    p = _phase(frame)
+    S.shadow_ellipse(tc, 21, feet + 1, 15, 3, 0.5)
+
+    def ring(x, y, u, v):
+        return -0.35 if abs(u) > 0.78 else (0.12 if v < -0.35 else 0.0)
+    # Tail to head, each segment a little bigger and riding its own wave.
+    for i, (sx, size) in enumerate(((8, 4.0), (13, 5.0), (19, 6.0), (25, 6.4))):
+        rise = 1.5 * math.sin(p - i * 1.1)
+        S.ellipsoid(tc, sx, feet - size - 1 + rise, size, size,
+                    0.72 + i * 0.05, spec=0.5, tex=ring)
+    # Far claw, the head, the drill snout pointing down the road, the near
+    # claw. The drill's spiral turns a notch every frame.
+    dig = 2.5 * math.sin(p * 2)
+    S.capsule(tc, 28, feet - 6, 34 + dig, feet - 1, 2.6, 0.45)
+    S.ellipsoid(tc, 30, feet - 10, 5, 4.5, 0.8, spec=0.4)
+
+    def spiral(x, y, _u, _v):
+        return -0.45 if int(x * 0.8 - y + frame) % 3 == 0 else 0.0
+    S.polygon(tc, [(33, feet - 15), (40, feet - 10), (33, feet - 5)],
+              (0.4, -0.5, 0.75), 0.95, spec=0.8, tex=spiral)
+    S.glint(tc, 29, feet - 12, 0)
+    S.capsule(tc, 29, feet - 7, 35 - dig, feet, 3, 0.95, spec=0.4)
+    for cx in (34 - dig, 36 - dig):
+        tc.put(cx, feet, 0.05)
+    return tc.to_canvas()
+
+
+def _mound(tc, cx, feet, rx, ry, frame, seed):
+    """A ridge of turned earth with clods tossed off its crest."""
+    p = _phase(frame)
+
+    def rubble(x, y, _u, _v):
+        cell = S.hash01(int(x) // 3, int(y) // 2, seed + frame)
+        return (cell - 0.5) * 0.45
+    S.shadow_ellipse(tc, cx, feet + 1, rx + 3, ry * 0.6, 0.55)
+    S.ellipsoid(tc, cx, feet - ry * 0.5, rx, ry, 0.72, depth=0.6, tex=rubble)
+    for i in range(4):
+        t = ((frame + i * 1.5) % WALK_FRAMES) / float(WALK_FRAMES)
+        x = cx + rx * (0.9 - t * 1.6) * (1 if i % 2 else -1) * 0.6
+        y = feet - ry - math.sin(t * math.pi) * ry * 1.4
+        S.ellipsoid(tc, x, y, 1.6, 1.4, 0.6 + 0.1 * math.sin(p + i), spec=0.3)
+    # The crack along the crest where the thing below pushes through.
+    for x in range(int(cx - rx * 0.6), int(cx + rx * 0.6)):
+        y = feet - ry * 1.35 + math.sin(x * 0.9 + p) * 0.8
+        tc.put(x, y, 0.05)
+
+
+def _burrower_mound(frame):
+    tc = _enemy_canvas()
+    _mound(tc, 20, PROP_CELL - FOOT, 11, 5, frame, 71)
+    return tc.to_canvas()
+
+
+def _enemy_golem(frame, cracked=False):
+    """A stone golem in a shell of rune-cut slabs. Cracked, the slabs are
+    gone and its glowing core shows through the seams."""
+    tc = _enemy_canvas(HUSK_CELL)
+    feet = HUSK_CELL - FOOT
+    p = _phase(frame)
+    swing = (3.5 if cracked else 2.5) * math.sin(p)
+    bob = -1.6 * abs(math.sin(p))
+    S.shadow_ellipse(tc, 24, feet + 1, 17, 4, 0.5)
+
+    def stone(x, y, _u, _v):
+        cell = S.hash01(int(x) // 4, int(y) // 4, 33)
+        seam = int(x) % 4 == 0 and int(y) % 4 == 0
+        return (cell - 0.5) * 0.16 - (0.2 if seam else 0.0)
+
+    def core(x, y, _u, _v):
+        # Rune light burning in the cracks of the bare core.
+        lit_seam = (int(x * 0.7 + y) % 5 == 0) or (int(x - y * 0.6) % 6 == 0)
+        return 0.9 if lit_seam else -0.1
+
+    # Stumpy legs and the far arm.
+    _legs(tc, 24, 32 + bob, feet, swing, width=7, near=0.7, far=0.35)
+    S.capsule(tc, 34, 18 + bob, 39, 30 + bob - swing, 6, 0.4, tex=stone)
+    S.ellipsoid(tc, 39, 32 + bob - swing, 5, 4.5, 0.45, tex=stone)
+    if cracked:
+        S.ellipsoid(tc, 24, 24 + bob, 11, 11, 0.22, spec=0.3, tex=core)
+        # One slab still clings on; chips of the rest drift loose round the
+        # shoulders, rising and falling out of step with the stride.
+        S.box(tc, 13, 17 + bob, 7, 9, 3, 0.85, tex=stone, top_albedo=1.0)
+        for i, (cx, cy) in enumerate(((35, 10), (12, 6), (38, 20))):
+            drift = 2 * math.sin(p + i * 2.1)
+            S.box(tc, cx, cy + drift, 3, 3, 1, 0.9, top_albedo=1.1)
+        S.ellipsoid(tc, 24, 11 + bob, 6, 5.5, 0.7, tex=stone)
+    else:
+        # The shell: three slabs over the chest and a heavy brow.
+        S.ellipsoid(tc, 24, 24 + bob, 13, 12, 0.8, tex=stone)
+        S.box(tc, 14, 16 + bob, 9, 10, 3, 0.95, tex=stone, top_albedo=1.15)
+        S.box(tc, 24, 16 + bob, 9, 10, 3, 0.88, tex=stone, top_albedo=1.1)
+        S.box(tc, 17, 27 + bob, 13, 6, 3, 0.85, tex=stone, top_albedo=1.05)
+        # A rune cut into the middle slab.
+        for dy in range(3, 8):
+            tc.put(28, 16 + bob + dy, 0.08)
+        tc.put(27, 18 + bob, 0.08)
+        tc.put(29, 21 + bob, 0.08)
+        S.ellipsoid(tc, 24, 10 + bob, 7, 6, 0.85, tex=stone)
+        _rect(tc, 18, 7 + bob, 31, 9 + bob, 0.6)
+    # The eye slit burns either way.
+    _rect(tc, 20, 11 + bob, 29, 13 + bob, 0.05)
+    S.glint(tc, 22, int(12 + bob), 0)
+    S.glint(tc, 27, int(12 + bob), 0)
+    # The near arm and its boulder fist.
+    S.capsule(tc, 13, 18 + bob, 9, 30 + bob + swing, 7, 0.85, tex=stone)
+    S.ellipsoid(tc, 9, 33 + bob + swing, 6, 5.5, 0.9, spec=0.3, tex=stone)
+    return tc.to_canvas()
+
+
+def _enemy_wyrm(frame):
+    """The mine's wyrm, surfacing: a plated body arcing out of the road with
+    its head reared and its mandibles working. The tail end dives back
+    into the earth, so it always reads as half buried."""
+    tc = _enemy_canvas(TITAN_CELL)
+    feet = TITAN_CELL - FOOT
+    p = _phase(frame)
+    S.shadow_ellipse(tc, 40, feet + 2, 32, 6, 0.5)
+
+    def plate(x, y, u, v):
+        band = -0.4 if abs(u) > 0.8 else 0.0
+        return band + (0.12 if v < -0.4 else 0.0)
+
+    # The body: segments along an arch from the burrow to the raised head.
+    count = 9
+    for i in range(count):
+        t = i / float(count - 1)
+        x = 12 + t * 44
+        arch = math.sin(t * math.pi * 0.5) * 36
+        sway = math.sin(p + t * 3.0) * 2.0
+        y = feet - 4 - arch + sway * t
+        size = 6.5 + t * 2.5
+        S.ellipsoid(tc, x, y, size, size * 0.95, 0.62 + t * 0.25, spec=0.4,
+                    tex=plate)
+        # A dorsal spine on every plate, the tallest over the shoulders.
+        S.cone(tc, x - 1, y - size - 3 - 3 * t, y - size + 2, 2.4, 0.95,
+               spec=0.4)
+    # The head: a plated skull with a swept-back crest, and a pair of long
+    # hooked mandibles opening and closing.
+    head_x, head_y = 63, feet - 40 + math.sin(p) * 1.5
+    S.polygon(tc, [(head_x - 8, head_y - 4), (head_x - 15, head_y - 12),
+                   (head_x - 2, head_y - 7)], (-0.2, -0.7, 0.7), 0.9)
+    S.ellipsoid(tc, head_x, head_y, 9, 7.5, 0.92, spec=0.6, tex=plate)
+    gape = 2 + 3 * (0.5 + 0.5 * math.sin(p * 2))
+    for side in (-1, 1):
+        root_y = head_y + side * 2.5
+        reach_y = head_y + side * (3 + gape)
+        S.capsule(tc, head_x + 5, root_y, head_x + 15, reach_y, 3.6,
+                  0.65 if side < 0 else 0.9, spec=0.6)
+        S.capsule(tc, head_x + 15, reach_y, head_x + 17, reach_y - side * 4,
+                  2.2, 0.65 if side < 0 else 0.95, spec=0.6)
+    S.ellipsoid(tc, head_x + 8, head_y, 2.5, 1.5 + gape * 0.4, 0.04)
+    for ex, ey in ((head_x + 1, head_y - 3), (head_x + 5, head_y - 4)):
+        tc.put(ex, ey, 0.02)
+        S.glint(tc, ex, int(ey) - 1, 0)
+    # Rubble heaped where the tail goes into the ground.
+    def rubble(x, y, _u, _v):
+        return (S.hash01(int(x) // 3, int(y) // 2, 91) - 0.5) * 0.4
+    S.ellipsoid(tc, 12, feet - 2, 12, 5, 0.75, depth=0.6, tex=rubble)
+    S.occlude(tc, feet, 8, 0.3)
+    return tc.to_canvas()
+
+
+def _wyrm_mound(frame):
+    """The wyrm under the road: a long ridge of heaved earth, its spines
+    breaking the surface as it goes."""
+    tc = _enemy_canvas(TITAN_CELL)
+    feet = TITAN_CELL - FOOT
+    p = _phase(frame)
+    _mound(tc, 40, feet, 30, 13, frame, 113)
+    for i, x in enumerate((24, 36, 48, 58)):
+        rise = 2.5 + 2.5 * math.sin(p - i * 1.3)
+        S.cone(tc, x, feet - 26 - rise, feet - 17, 3.2, 0.95, spec=0.5)
+    return tc.to_canvas()
+
+
+KING_STAFF_TIP = (54, 12)   # matches the freeze beam in frostline_model.c
+
+
+def _enemy_king(frame):
+    """The frost king: a towering figure in a fur-trimmed cape and rimed
+    plate, a crown of ice prisms, and the staff whose crystal freezes the
+    towers. He glides more than he walks."""
+    tc = _enemy_canvas(TITAN_CELL)
+    feet = TITAN_CELL - FOOT
+    p = _phase(frame)
+    sway = 1.5 * math.sin(p)
+    S.shadow_ellipse(tc, 38, feet + 2, 22, 5, 0.55)
+
+    # The staff stands behind the cape, its crystal held high.
+    sx, sy = KING_STAFF_TIP
+    S.capsule(tc, sx - 2, feet - 1, sx, sy + 8, 2.4, 0.55,
+              tex=S.wood(seed=9, spacing=3))
+    crystal(tc, sx, sy - 6 + sway * 0.3, sy + 8, 4.2, albedo=1.1)
+    S.glint(tc, sx - 1, int(sy - 2), 1)
+    # The cape: a long dark cone with deep folds, its train streaming back
+    # in the wind and a hem of white fur dragging through the snow.
+    trail = 2 * math.sin(p + 1.0)
+    S.polygon(tc, [(24, 20), (6, feet - 10 + trail), (4, feet - 2 + trail),
+                   (22, feet - 1)], (-0.5, 0.2, 0.85), 0.28,
+              tex=S.folds(5, 0.2))
+    S.cone(tc, 36 + sway * 0.5, 14, feet - 1, 21 + sway * 0.5, 0.32,
+           tex=S.folds(9, 0.2))
+    S.capsule(tc, 6, feet - 3 + trail, 22, feet - 2, 3.5, 1.0,
+              tex=S.fur(14, 0.2))
+    S.capsule(tc, 17, feet - 2, 56, feet - 2, 4, 1.0, tex=S.fur(15, 0.2))
+    # Rimed breastplate and the fur mantle over the shoulders.
+    S.ellipsoid(tc, 36, 36, 11, 15, 0.9, spec=0.8, tex=S.folds(3, 0.1))
+    _rect(tc, 30, 36, 43, 37, 0.15)
+    _rect(tc, 30, 42, 43, 43, 0.15)
+    S.ellipsoid(tc, 36, 23, 15, 6, 1.0, tex=S.fur(12, 0.18))
+    # The head: a dark face under the helm, eyes white-hot.
+    S.ellipsoid(tc, 36, 16, 6.5, 7, 0.85, spec=0.9)
+    _rect(tc, 32, 15, 41, 20, 0.04)
+    S.glint(tc, 34, 17, 0)
+    S.glint(tc, 39, 17, 0)
+    # The crown of ice.
+    for cx, top, half, lean in ((30, 3, 2.2, -1.5), (36, 0, 2.8, 0),
+                                (42, 3, 2.2, 1.5)):
+        crystal(tc, cx, top + sway * 0.2, 11, half, albedo=1.05, lean=lean)
+    # The hand on the staff and the near arm under the mantle.
+    S.capsule(tc, 45, 26, 51, 38, 4.5, 0.8, spec=0.5)
+    S.ellipsoid(tc, sx - 2, 38, 3, 3, 0.9, spec=0.6)
+    S.capsule(tc, 26, 26, 22, 44 + sway, 4.5, 0.85, spec=0.5)
+    S.ellipsoid(tc, 22, 46 + sway, 3, 3, 0.9)
+    S.occlude(tc, feet, 6, 0.3)
+    return tc.to_canvas()
+
+
+# ----------------------------------------------------------------------
+# Hero (48 px cells)
+# ----------------------------------------------------------------------
 
 
 def _hero_warden(frame):
-    """The frost warden: a shield bearer who holds the road."""
-    c = _canvas(40)
-    bob = (0, -1, 0, 1)[frame % 4]
-    base = 37 + bob
-    stride = (2, 0, -2, 0)[frame % 4]
+    """The warden: a knight in a dark cloak with a spear and kite shield."""
+    tc = S.ToneCanvas(HERO_CELL, HERO_CELL)
+    feet = HERO_CELL - FOOT
+    p = _phase(frame, 4)
+    breath = 0.8 * math.sin(p)
+    S.shadow_ellipse(tc, 25, feet + 1, 12, 3.5, 0.5)
 
-    # Legs.
-    for x, extra in ((12, 0), (17, stride), (24, -stride), (28, 0)):
-        c.fill_rect(x, base - 11, 5, 11, BLACK)
-        c.fill_rect(x - 1 + extra // 2, base, 7, 3, BLACK)
-        c.fill_rect(x + 1, base - 10, 1, 9, WHITE)
+    # The cloak hangs behind and stirs in the wind.
+    S.cone(tc, 24 + breath * 0.5, 12, feet - 1, 11 + breath * 0.5, 0.45,
+           tex=S.folds(6, 0.18))
+    # Spear: ash haft and a steel head that catches the light.
+    S.capsule(tc, 34, feet, 34, 7 + breath, 1.8, 0.65,
+              tex=S.wood(seed=6, spacing=3))
+    S.polygon(tc, [(34, 2 + breath), (37, 7 + breath), (34, 11 + breath),
+                   (31, 7 + breath)], (-0.3, -0.3, 1.0), 1.0, spec=0.9)
+    _legs(tc, 23, 30, feet, 0.0, width=4, near=0.7, far=0.35)
+    # Breastplate and helm.
+    S.ellipsoid(tc, 24, 22 + breath * 0.3, 8, 9, 0.95, spec=0.7,
+                tex=S.folds(2, 0.08))
+    S.capsule(tc, 17, 30, 31, 30, 2.2, 0.4)
+    S.ellipsoid(tc, 24, 11, 5, 5.5, 0.95, spec=0.9)
+    _rect(tc, 21, 11, 28, 12, 0.04)
+    S.capsule(tc, 24, 5, 20, 1 + breath, 2.2, 1.0, tex=S.fur(8))
+    S.ellipsoid(tc, 33, 20, 2.4, 2.4, 0.9)
+    # Kite shield with a frost-star device.
+    shield = [(10, 16), (20, 16), (20, 26), (15, 34), (10, 26)]
+    S.polygon(tc, shield, (-0.4, -0.2, 1.0), 1.0, spec=0.3)
+    S.polygon(tc, [(15, 16), (20, 16), (20, 26), (15, 34)],
+              (0.25, -0.1, 1.0), 0.95)
+    for dx, dy in ((0, 0), (-2, 0), (2, 0), (0, -2), (0, 2)):
+        tc.put(15 + dx, 23 + dy, 0.05)
+    return tc.to_canvas()
 
-    # Cloak and torso.
-    fill_polygon(c, [(9, base - 4), (11, base - 22), (15, base - 28),
-                     (26, base - 28), (30, base - 22), (31, base - 4)], BLACK)
-    c.line(16, base - 26, 15, base - 6, WHITE)
-    c.line(22, base - 26, 23, base - 6, WHITE)
-    c.fill_rect(14, base - 16, 13, 2, WHITE)
 
-    # A big shield on the near arm.
-    fill_polygon(c, [(1, base - 26), (11, base - 28), (11, base - 8),
-                     (1, base - 6)], BLACK)
-    c.line(3, base - 22, 9, base - 23, WHITE)
-    c.line(3, base - 17, 9, base - 18, WHITE)
-    c.fill_rect(5, base - 20, 2, 7, WHITE)
+SOLDIER_WALK_FRAMES = 4
 
-    # Hooded head with a lit face.
-    fill_polygon(c, [(16, base - 28), (18, base - 36), (25, base - 36),
-                     (27, base - 28)], BLACK)
-    fill_polygon(c, [(19, base - 31), (20, base - 34), (24, base - 34),
-                     (24, base - 31)], WHITE)
-    c.fill_rect(21, base - 33, 1, 1, BLACK)
 
-    # The maul, raised.
-    c.fill_rect(33, base - 34, 3, 26, BLACK)
-    c.fill_rect(34, base - 32, 1, 20, WHITE)
-    c.fill_rect(29, base - 38, 11, 7, BLACK)
-    c.fill_rect(31, base - 36, 7, 1, WHITE)
-    return c
+def _soldier(frame, strike=False):
+    """A barracks footman: nasal helm, paper tabard over mail, a round
+    shield on the near arm and a spear. Smaller than a raider on purpose,
+    so the garrison reads as the player's own little men."""
+    tc = S.ToneCanvas(PROP_CELL, PROP_CELL)
+    feet = PROP_CELL - FOOT
+    p = _phase(frame, SOLDIER_WALK_FRAMES)
+    swing = 0.0 if strike else 2.4 * math.sin(p)
+    bob = 0.0 if strike else -0.8 * abs(math.sin(p))
+    cx = 20
+    S.shadow_ellipse(tc, cx + 1, feet + 1, 8, 2.5, 0.5)
+
+    _legs(tc, cx, 27 + bob, feet, swing, width=3.0, near=0.55, far=0.3)
+    # Spear behind the body: level on the march, thrust out on a strike.
+    if strike:
+        S.capsule(tc, cx - 2, 22, cx + 17, 19, 1.4, 0.65)
+        S.polygon(tc, [(cx + 16, 17), (cx + 21, 19), (cx + 16, 21)],
+                  (0.0, -0.3, 1.0), 1.0, spec=0.9)
+    else:
+        S.capsule(tc, cx + 5, feet - 1, cx + 6, 9 + bob, 1.4, 0.6)
+        S.polygon(tc, [(cx + 6, 4 + bob), (cx + 8, 9 + bob),
+                       (cx + 6, 11 + bob), (cx + 4, 9 + bob)],
+                  (-0.3, -0.3, 1.0), 1.0, spec=0.9)
+    # Mail body under a pale tabard with a dark frost-star.
+    lean = 1.5 if strike else 0.0
+    S.ellipsoid(tc, cx + lean, 21 + bob, 5.5, 6.5, 0.6, tex=S.fur(71, 0.1))
+    S.polygon(tc, [(cx - 3 + lean, 16 + bob), (cx + 3 + lean, 16 + bob),
+                   (cx + 4 + lean, 28 + bob), (cx - 4 + lean, 28 + bob)],
+              (-0.2, 0.0, 1.0), 1.1, tex=S.folds(3, 0.1))
+    for dx, dy in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)):
+        tc.put(int(cx + lean + dx), int(21 + bob + dy), 0.05)
+    # Helm with a nasal guard.
+    S.ellipsoid(tc, cx + lean, 11 + bob, 4, 4.2, 0.95, spec=0.8)
+    _rect(tc, cx - 3 + lean, 12 + bob, cx + 4 + lean, 13 + bob, 0.1)
+    _rect(tc, cx + lean, 11 + bob, cx + 1 + lean, 15 + bob, 0.75)
+    # The shield on the near arm, braced forward on a strike.
+    shield_x = cx - 5 + (2 if strike else 0)
+    S.ellipsoid(tc, shield_x, 21 + bob, 4.2, 5, 0.95, depth=0.5, spec=0.3)
+    S.ellipsoid(tc, shield_x, 21 + bob, 1.2, 1.2, 1.2, spec=0.8)
+    return tc.to_canvas()
+
+
+# ----------------------------------------------------------------------
+# Build pads, projectiles and sparks
+# ----------------------------------------------------------------------
 
 
 def _build_pad(frame):
-    """Build spot: a stone disc with a breathing cross."""
-    c = _canvas(PROP_CELL)
-    c.disc(16, 16, 12, BLACK)
-    c.disc(16, 16, 10, WHITE)
-    c.disc(16, 16, 8, BLACK)
-    c.disc(16, 16, 7, WHITE)
-    if frame == 0:
-        c.fill_rect(9, 15, 14, 3, BLACK)
-        c.fill_rect(15, 9, 3, 14, BLACK)
-    else:
-        c.fill_rect(10, 15, 12, 2, BLACK)
-        c.fill_rect(15, 10, 2, 12, BLACK)
-    return c
+    """A ring of flagstones marking ground that will take a tower.
+
+    Frame 1 lifts the stones' tone so the pads pulse while a card is armed.
+    """
+    tc = S.ToneCanvas(PROP_CELL, PROP_CELL)
+    cx, cy = 20, 20
+    lift = 0.12 if frame else 0.0
+
+    def flags(x, y, u, v):
+        angle = math.atan2(v, u)
+        seam = (angle / (2 * math.pi) * 9) % 1.0 < 0.12
+        ring = math.sqrt(u * u + v * v)
+        if ring < 0.55:
+            return -1.0
+        return (-0.4 if seam else 0.0) + lift
+    S.ellipsoid(tc, cx, cy, 16, 9, 0.95, depth=0.3, tex=flags)
+    # The open centre is trodden snow, a shade below the map paper.
+    for y in range(cy - 6, cy + 7):
+        for x in range(cx - 10, cx + 11):
+            u = (x + 0.5 - cx) / 8.8
+            v = (y + 0.5 - cy) / 4.95
+            if u * u + v * v <= 1.0:
+                tc.put(x, y, 0.82 + lift + (0.0 if v > 0 else -0.25 * (1 + v)))
+    if frame:
+        for gx, gy in ((cx - 13, cy - 2), (cx + 12, cy + 3), (cx, cy - 8)):
+            S.glint(tc, gx, gy, 0)
+    return tc.to_canvas()
+
+
+# ----------------------------------------------------------------------
+# Campaign map medallions (40 px cells, in the props sheet)
+# ----------------------------------------------------------------------
+# A stone token marks every stage on the campaign map. The emblem in relief
+# names the stage's landscape, in the order of levels.CAMPAIGN_NODES.
+
+MEDALLION_CX, MEDALLION_CY, MEDALLION_R = 20, 18, 15
+
+
+def _medallion_disc(tc, albedo):
+    """A domed stone token with a raised rim, lit from the top left."""
+    cx, cy, r = MEDALLION_CX, MEDALLION_CY, MEDALLION_R
+    S.shadow_ellipse(tc, cx + 2, cy + r - 1, r, 4, 0.6)
+
+    def rim(x, y, u, v):
+        ring = math.sqrt(u * u + v * v)
+        if ring > 0.84:
+            return 0.15
+        if ring > 0.74:
+            return -0.55   # the groove inside the rim
+        return 0.0
+    S.ellipsoid(tc, cx, cy, r, r - 1, albedo, spec=0.25, depth=0.4, tex=rim)
+
+
+def _emblem_forest(tc):
+    for x, top, h in ((15, 10, 15), (25, 12, 13), (20, 7, 18)):
+        S.cone(tc, x, top, top + h - 3, 4.5, 0.95, tex=S.fur(x, depth=0.1))
+        S.capsule(tc, x, top + h - 3, x, top + h - 1, 1.0, 0.4)
+
+
+def _emblem_lake(tc):
+    S.ellipsoid(tc, 20, 20, 9, 5, 0.25, spec=0.9, depth=0.2)
+    for x0, x1, y in ((14, 19, 19), (21, 26, 21)):
+        S.capsule(tc, x0, y, x1, y, 0.6, 1.1)
+    S.capsule(tc, 12, 14, 13, 10, 0.7, 0.9)   # a reed on the shore
+    S.capsule(tc, 27, 15, 28, 11, 0.7, 0.9)
+
+
+def _emblem_peaks(tc):
+    S.polygon(tc, [(9, 26), (17, 10), (21, 18)], (-0.7, -0.3, 0.65), 1.0)
+    S.polygon(tc, [(17, 10), (21, 18), (25, 26), (9, 26)], (0.7, 0.1, 0.7), 0.6)
+    S.polygon(tc, [(19, 26), (25, 14), (31, 26)], (0.6, 0.0, 0.8), 0.7)
+    S.polygon(tc, [(19, 26), (25, 14), (24, 26)], (-0.7, -0.3, 0.65), 1.05)
+    S.glint(tc, 17, 10, 0)
+
+
+def _emblem_mine(tc):
+    S.capsule(tc, 12, 26, 27, 11, 1.2, 0.75)      # the handles cross
+    S.capsule(tc, 28, 26, 13, 11, 1.2, 0.65)
+    S.capsule(tc, 22, 8, 32, 14, 1.6, 1.0, spec=0.6)   # the pick heads
+    S.capsule(tc, 8, 14, 18, 8, 1.6, 1.0, spec=0.6)
+
+
+def _emblem_glacier(tc):
+    crystal(tc, 20, 7, 27, 5, albedo=1.05)
+    crystal(tc, 13, 14, 27, 3.5, albedo=0.95, lean=-1)
+    crystal(tc, 27, 15, 27, 3.5, albedo=0.95, lean=1)
+
+
+def _emblem_ruins(tc):
+    S.cylinder(tc, 15, 10, 27, 3.5, 0.95, tex=S.masonry(3, course=4, blocks=4))
+    S.cylinder(tc, 25, 16, 27, 3.5, 0.9, tex=S.masonry(3, course=4, blocks=4,
+                                                        seed=3))
+    S.box(tc, 11, 8, 9, 3, 2, 1.0, top_albedo=1.2)   # a lintel still in place
+    S.ellipsoid(tc, 21, 27, 3, 1.5, 0.7)            # a fallen drum
+
+
+def _emblem_falls(tc):
+    S.box(tc, 10, 9, 20, 4, 3, 0.9, top_albedo=1.25)    # the lip of the cliff
+    for x in (13, 16, 19, 22, 25):
+        S.capsule(tc, x, 13, x + (x % 2), 25, 0.9, 1.05, spec=0.5)
+    S.ellipsoid(tc, 20, 27, 10, 2.5, 0.8, spec=0.4)    # the plunge pool
+
+
+def _emblem_fortress(tc):
+    S.box(tc, 12, 17, 16, 10, 3, 0.85, top_albedo=1.2)
+    for x, top in ((12, 12), (20, 7), (28, 12)):
+        S.cylinder(tc, x, top + 4, 27, 3, 0.95)
+        S.cone(tc, x, top - 4, top + 4, 4, 1.0, spec=0.4)
+    _gate_arch(tc, 20, 27, 3, 5)
+
+
+def _gate_arch(tc, cx, base, half, height):
+    for y in range(base - height, base):
+        for x in range(cx - half, cx + half):
+            tc.put(x, y, 0.05)
+
+
+def _emblem_lock(tc):
+    """A padlock: the stage is not open yet."""
+    for i in range(12):
+        angle = math.pi + i * math.pi / 11
+        x = 20 + math.cos(angle) * 4.5
+        y = 15 + math.sin(angle) * 5
+        S.capsule(tc, x, y, x, y, 1.1, 0.85, spec=0.5)
+    S.box(tc, 13, 15, 14, 11, 2, 0.8, top_albedo=1.1)
+    _gate_arch(tc, 20, 23, 1, 5)
+
+
+MEDALLION_EMBLEMS = (
+    _emblem_forest, _emblem_lake, _emblem_peaks, _emblem_mine,
+    _emblem_glacier, _emblem_ruins, _emblem_falls, _emblem_fortress,
+)
+
+
+def _medallion(emblem, locked=False):
+    """The token with its emblem sunk into the face.
+
+    At 40 px a mid-grey emblem on a mid-grey stone dithers into mush, so the
+    face is kept bright and the emblem is pressed down to a dark relief that
+    still carries its own lit and shaded sides.
+    """
+    tc = S.ToneCanvas(PROP_CELL, PROP_CELL)
+    _medallion_disc(tc, 0.8 if locked else 1.2)
+    relief = S.ToneCanvas(PROP_CELL, PROP_CELL)
+    emblem(relief)
+    depth = 0.3 if locked else 0.42
+    for y in range(PROP_CELL):
+        for x in range(PROP_CELL):
+            tone = relief.get(x, y)
+            if tone is not None:
+                tc.put(x, y, min(1.0, tone) * depth)
+    return tc.to_canvas()
 
 
 def _projectile(frame):
-    """Arrow in flight; the fletching flickers between frames."""
-    c = _canvas(FX_CELL)
-    c.fill_rect(3, 7, 10, 2, BLACK)
-    c.fill_rect(4, 7, 8, 1, WHITE)
-    if frame == 1:
-        fill_polygon(c, [(1, 8), (5, 5), (5, 11)], BLACK)
-    elif frame == 2:
-        fill_polygon(c, [(0, 8), (4, 4), (4, 12)], BLACK)
-    return c
+    """A crossbow bolt in flight; the fletching flickers between frames."""
+    tc = S.ToneCanvas(FX_CELL, FX_CELL)
+    S.capsule(tc, 3, 8, 12, 8, 1.6, 0.8)
+    S.polygon(tc, [(12, 6), (15, 8), (12, 10)], (0.0, -0.3, 1.0), 1.0,
+              spec=0.8)
+    spread = 2 + frame % 2
+    S.polygon(tc, [(1, 8 - spread), (5, 8), (1, 8 + spread)],
+              (-0.4, -0.2, 1.0), 0.9)
+    return tc.to_canvas()
 
 
 def _spark(frame):
-    """Impact spark: a growing ring with radiating flecks."""
-    c = _canvas(FX_CELL)
-    radius = 2 + frame
-    c.disc(8, 8, radius, BLACK)
-    c.disc(8, 8, max(0, radius - 2), WHITE)
-    if frame > 3:
-        import math
-        for angle in range(0, 360, 60):
-            c.set(8 + int(math.cos(math.radians(angle)) * radius),
-                  8 + int(math.sin(math.radians(angle)) * radius), BLACK)
-    return c
+    """Impact: a hot flash that breaks into flying flecks."""
+    tc = S.ToneCanvas(FX_CELL, FX_CELL)
+    if frame < 3:
+        radius = 2.5 + frame * 1.5
+        S.ellipsoid(tc, 8, 8, radius, radius, 1.1, spec=0.6)
+    for i in range(6):
+        angle = i / 6.0 * 2 * math.pi + frame * 0.3
+        reach = 2.0 + frame * 1.1
+        x = 8 + math.cos(angle) * reach
+        y = 8 + math.sin(angle) * reach
+        S.glint(tc, int(x), int(y), 0)
+    return tc.to_canvas(outline=frame < 4)
+
+
+EMBER_FRAMES = 4
+
+
+def _ember_pot(frame):
+    """A clay fire pot tumbling through the air, its rag wick streaming
+    flame. Each frame turns it a quarter round."""
+    tc = S.ToneCanvas(FX_CELL, FX_CELL)
+    angle = frame / float(EMBER_FRAMES) * 2 * math.pi
+    cx, cy = 8, 9
+    S.ellipsoid(tc, cx, cy, 4.2, 4.2, 0.6, spec=0.4,
+                tex=lambda x, y, u, v: -0.3 if abs(v - 0.2) < 0.12 else 0.0)
+    nx, ny = math.cos(angle - math.pi / 2), math.sin(angle - math.pi / 2)
+    S.capsule(tc, cx + nx * 3, cy + ny * 3, cx + nx * 6, cy + ny * 6, 2.4,
+              1.15)
+    S.glint(tc, int(cx + nx * 6), int(cy + ny * 6), 0)
+    return tc.to_canvas()
+
+
+def _ember_flame(frame):
+    """A small tongue of fire on burning ground, licking from side to side."""
+    tc = S.ToneCanvas(FX_CELL, FX_CELL)
+    p = _phase(frame, EMBER_FRAMES)
+    cx, base = 8, 14
+    lean = 1.4 * math.sin(p)
+    height = 10 + 2 * math.sin(p * 2)
+    S.cone(tc, cx + lean, base - height, base, 3.8, 0.75, lid=0.5)
+    S.cone(tc, cx + lean * 1.3, base - height * 0.65, base, 2.0, 1.25,
+           lid=0.5)
+    rise = (frame * 3) % 6
+    S.glint(tc, int(cx + lean * 2 + 2), int(base - height - rise), 0)
+    return tc.to_canvas()
+
+
+# ----------------------------------------------------------------------
+# Icons (28 px cells)
+# ----------------------------------------------------------------------
+
+
+def _icon_canvas():
+    return S.ToneCanvas(ICON_CELL, ICON_CELL)
 
 
 def _icon_heart():
-    c = _canvas(FX_CELL)
-    c.disc(6, 6, 3, BLACK)
-    c.disc(10, 6, 3, BLACK)
-    fill_polygon(c, [(3, 7), (13, 7), (8, 13)], BLACK)
-    return c
+    tc = _icon_canvas()
+    S.ellipsoid(tc, 9.5, 10, 6, 6, 0.95, spec=0.8)
+    S.ellipsoid(tc, 18.5, 10, 6, 6, 0.9, spec=0.5)
+    S.polygon(tc, [(3.6, 12), (24.4, 12), (14, 24)], (0.1, 0.2, 1.0), 0.85)
+    S.glint(tc, 7, 7, 1)
+    return tc.to_canvas(halo=False)
 
 
 def _icon_coin():
-    c = _canvas(FX_CELL)
-    c.disc(8, 8, 6, BLACK)
-    c.disc(8, 8, 4, WHITE)
-    c.fill_rect(7, 5, 2, 6, BLACK)
-    return c
+    """A short stack of coins, the top one face up."""
+    tc = _icon_canvas()
+
+    def milled(x, _y, _u, _v):
+        return -0.25 if int(x) % 2 == 0 else 0.0
+    for i, y in enumerate((22, 18, 14)):
+        S.cylinder(tc, 14 - i, y - 3, y, 9, 0.95, tex=milled, lid=0.42,
+                   cap=1.0, spec=0.5)
+    S.ellipsoid(tc, 12, 11, 4, 1.6, 0.5)
+    S.glint(tc, 8, 10, 1)
+    return tc.to_canvas(halo=False)
 
 
 def _icon_score():
-    """Score glyph: three ascending bars, so it never reads as a coin."""
-    c = _canvas(FX_CELL)
-    c.fill_rect(2, 9, 4, 5, BLACK)
-    c.fill_rect(6, 6, 4, 8, BLACK)
-    c.fill_rect(10, 2, 4, 12, BLACK)
-    c.fill_rect(3, 10, 2, 3, WHITE)
-    c.fill_rect(7, 7, 2, 6, WHITE)
-    c.fill_rect(11, 3, 2, 10, WHITE)
-    return c
+    """A trophy cup: score is a prize, never confused with the coin."""
+    tc = _icon_canvas()
+    S.box(tc, 8, 22, 12, 3, 3, 0.85, top_albedo=1.0)
+    S.capsule(tc, 14, 15, 14, 22, 2.4, 0.9, spec=0.4)
+    S.ellipsoid(tc, 6, 9, 3, 4, 0.7)
+    S.ellipsoid(tc, 22, 9, 3, 4, 0.6)
+    S.ellipsoid(tc, 6, 9, 1.4, 2.4, -1.0)
+    S.ellipsoid(tc, 22, 9, 1.4, 2.4, -1.0)
+    S.cylinder(tc, 14, 4, 10, 8, 1.0, lid=0.35, cap=0.4, spec=0.8)
+    S.ellipsoid(tc, 14, 11, 7.5, 5, 1.0, spec=0.8)
+    # The handles' holes are cut out after shading.
+    for y in range(ICON_CELL):
+        for x in range(ICON_CELL):
+            if tc.get(x, y) is not None and tc.get(x, y) < 0.01 and (
+                    x < 8 or x > 20):
+                tc.tone[y * ICON_CELL + x] = None
+    S.glint(tc, 10, 8, 1)
+    return tc.to_canvas(halo=False)
 
 
 def _icon_star():
-    """Star glyph for the end panel rating."""
-    c = _canvas(FX_CELL)
-    points = [(8, 1), (10, 6), (15, 6), (11, 9), (13, 14),
-              (8, 11), (3, 14), (5, 9), (1, 6), (6, 6)]
-    fill_polygon(c, points, BLACK)
-    return c
+    """A five pointed star cut in facets: each arm has a lit and dark half."""
+    tc = _icon_canvas()
+    cx, cy = 14, 15
+    outer, inner = 12.5, 5.2
+    points = []
+    for i in range(10):
+        angle = -math.pi / 2 + i * math.pi / 5
+        radius = outer if i % 2 == 0 else inner
+        points.append((cx + math.cos(angle) * radius,
+                       cy + math.sin(angle) * radius))
+    for i in range(10):
+        a = points[i]
+        b = points[(i + 1) % 10]
+        mid_angle = -math.pi / 2 + (i + 0.5) * math.pi / 5
+        normal = (math.cos(mid_angle) * 0.7, math.sin(mid_angle) * 0.7, 0.75)
+        S.polygon(tc, [(cx, cy), a, b], normal, 1.05, spec=0.4)
+    return tc.to_canvas(halo=False)
 
 
 def _icon_nova():
-    """Frost nova glyph: a burst of shards around a core."""
-    c = _canvas(FX_CELL)
-    c.disc(8, 8, 3, BLACK)
-    c.disc(8, 8, 1, WHITE)
-    import math
-    for angle in range(0, 360, 45):
-        x = 8 + int(math.cos(math.radians(angle)) * 6)
-        y = 8 + int(math.sin(math.radians(angle)) * 6)
-        c.set(x, y, BLACK)
-        c.set(8 + int(math.cos(math.radians(angle)) * 7),
-              8 + int(math.sin(math.radians(angle)) * 7), BLACK)
-    return c
+    """The frost nova: four ice shards bursting from a bright core."""
+    tc = _icon_canvas()
+    crystal(tc, 14, 1, 13, 3.5)
+    for angle, length in ((0, 11), (math.pi, 11), (math.pi / 2, 10)):
+        x = 14 + math.cos(angle) * length
+        y = 14 + math.sin(angle) * length
+        S.capsule(tc, 14, 14, x, y, 3.4, 0.95, spec=0.6)
+    S.ellipsoid(tc, 14, 14, 5, 5, 1.1, spec=0.9)
+    S.glint(tc, 12, 12, 1)
+    return tc.to_canvas(halo=False)
 
 
 def _icon_flag():
-    c = _canvas(FX_CELL)
-    c.fill_rect(3, 2, 2, 12, BLACK)
-    fill_polygon(c, [(5, 3), (13, 5), (5, 9)], BLACK)
-    return c
+    tc = _icon_canvas()
+    S.capsule(tc, 7, 25, 7, 3, 2, 0.6)
+    S.polygon(tc, [(8, 4), (23, 8), (8, 15)], (-0.2, -0.1, 1.0), 0.95,
+              tex=S.folds(3))
+    return tc.to_canvas(halo=False)
+
+
+def _card_icon(builder, *args):
+    """A sprite rendered at full size, then shrunk in tone before dithering.
+
+    Shrinking the tones keeps the shading; shrinking dithered art would
+    turn it into noise.
+    """
+    full = builder(*args)
+    tc = S.ToneCanvas(full.width, full.height)
+    for y in range(full.height):
+        for x in range(full.width):
+            value = full.get(x, y)
+            if value >= 0:
+                tc.put(x, y, value / 255.0)
+    return tc.resized(ICON_CELL, ICON_CELL).to_canvas()
+
+
+# ----------------------------------------------------------------------
+# Castle moving parts (28 px cells)
+# ----------------------------------------------------------------------
+
+CASTLE_FLAG_FRAMES = 6
+CASTLE_FLAME_FRAMES = 4
+
+
+def _castle_flag(frame):
+    """The hold's banner, rippling. The pole is at the right edge and the
+    cloth flies left, out over the open snow where it reads, instead of
+    over the cliff hatching."""
+    tc = S.ToneCanvas(CASTLE_FX_CELL, CASTLE_FX_CELL)
+    p = _phase(frame, CASTLE_FLAG_FRAMES)
+    columns = 8
+    pole = CASTLE_FX_CELL - 2
+    top, bottom = [], []
+    for i in range(columns):
+        x = pole - i * 3.2
+        wave = math.sin(p - i * 0.8) * (0.5 + i * 0.35)
+        top.append((x, 3 + wave))
+        bottom.append((x, 14 + wave + i * 0.25 - (3 if i == columns - 1 else 0)))
+    cloth = top + list(reversed(bottom))
+
+    def ripple(x, _y, _u, _v):
+        return 0.35 * math.cos(p - (pole - x) / 3.2 * 0.8)
+    S.polygon(tc, cloth, (-0.2, -0.1, 1.0), 0.75, tex=ripple)
+    # A paper frost star on the dark cloth.
+    star_x = int(pole - 10 + math.sin(p - 3 * 0.8) * 1.2)
+    star_y = int(8 + math.sin(p - 3 * 0.8) * 1.4)
+    for dx, dy in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)):
+        tc.put(star_x + dx, star_y + dy, 1.0)
+    return tc.to_canvas()
+
+
+def _castle_flame(frame):
+    """Brazier fire: a licking tongue with a white heart."""
+    tc = S.ToneCanvas(CASTLE_FX_CELL, CASTLE_FX_CELL)
+    p = _phase(frame, CASTLE_FLAME_FRAMES)
+    cx, base = 14, 24
+    lean = 1.8 * math.sin(p)
+    height = 15 + 2.5 * math.sin(p * 2)
+    S.ellipsoid(tc, cx, base - 3, 5.5, 4, 0.8)
+    S.cone(tc, cx + lean, base - height, base - 2, 5.5, 0.7, lid=0.5)
+    S.cone(tc, cx + lean * 1.3, base - height * 0.72, base - 2, 3.2, 1.2,
+           lid=0.5)
+    S.ellipsoid(tc, cx, base - 4, 2.5, 2, 1.2)
+    # Loose sparks rising off the tip.
+    for i in range(2):
+        rise = (frame * 3 + i * 6) % 10
+        S.glint(tc, int(cx + lean * 2 + (i * 2 - 1) * 2), int(base - height - rise), 0)
+    return tc.to_canvas(outline=True)
+
+
+# ----------------------------------------------------------------------
+# Sheet assembly
+# ----------------------------------------------------------------------
 
 
 def _build_grid(cell, entries, columns=8):
@@ -663,12 +1754,29 @@ def build_units():
     entries.append(("tower_siege_lv2", _siege_tower(2)))
     entries.append(("tower_siege_lv3a", _siege_tower(3, "fire")))
     entries.append(("tower_siege_lv3b", _siege_tower(3, "concussion")))
+    # The level 3 looks follow the second upgrade picked: lv3a is option 0.
+    for key, builder, branches in NEW_TOWERS:
+        entries.append((f"tower_{key}_lv1", builder(1)))
+        entries.append((f"tower_{key}_lv2", builder(2)))
+        entries.append((f"tower_{key}_lv3a", builder(3, branches[0])))
+        entries.append((f"tower_{key}_lv3b", builder(3, branches[1])))
     return _build_grid(UNIT_CELL, entries)
+
+
+NEW_TOWERS = (
+    ("storm", _storm_tower, ("static", "tempest")),
+    ("rune", _rune_tower, ("prism", "obelisk")),
+    ("barracks", _barracks_tower, ("veterans", "berserk")),
+    ("ember", _ember_tower, ("wildfire", "magma")),
+)
 
 
 # The roster, in the order the level data lists them. The husk and the titan
 # are bigger than the rank and file, so they live in their own sheets: every
 # cell in a sheet has to be the same size or the packer rescales the art.
+# A sprite key is "enemy_<key>_<frame>"; the alternate looks of one enemy
+# carry a suffix: "golem_cracked" is the golem out of its shell, "<key>_under"
+# the ridge of earth a burrowing enemy pushes up under the road.
 SMALL_ENEMY_BUILDERS = [
     ("wolf", _enemy_wolf),
     ("raider", _enemy_raider),
@@ -676,41 +1784,64 @@ SMALL_ENEMY_BUILDERS = [
     ("shaman", _enemy_shaman),
     ("banner", _enemy_banner),
     ("sap", _enemy_sap),
+    ("crow", _enemy_crow),
+    ("slimelet", _enemy_slimelet),
+    ("burrower", _enemy_burrower),
+    ("burrower_under", _burrower_mound),
 ]
-ENEMY_BUILDERS = SMALL_ENEMY_BUILDERS + [("husk", _enemy_husk),
-                                         ("titan", _enemy_titan)]
+HUSK_ENEMY_BUILDERS = [
+    ("husk", _enemy_husk),
+    ("golem", _enemy_golem),
+    ("golem_cracked", lambda frame: _enemy_golem(frame, cracked=True)),
+    ("slime", _enemy_slime),
+]
+TITAN_ENEMY_BUILDERS = [
+    ("titan", _enemy_titan),
+    ("wyrm", _enemy_wyrm),
+    ("wyrm_under", _wyrm_mound),
+    ("king", _enemy_king),
+]
+ENEMY_BUILDERS = SMALL_ENEMY_BUILDERS + HUSK_ENEMY_BUILDERS + TITAN_ENEMY_BUILDERS
+
+
+def _enemy_entries(builders):
+    return [(f"enemy_{name}_{frame}", builder(frame))
+            for name, builder in builders for frame in range(WALK_FRAMES)]
 
 
 def build_props():
-    """The rank and file, all on one 32 pixel grid."""
-    entries = []
-    for name, builder in SMALL_ENEMY_BUILDERS:
-        for frame in range(4):
-            entries.append((f"enemy_{name}_{frame}", builder(frame)))
+    """The rank and file and the build pads, all on one 40 pixel grid."""
+    entries = _enemy_entries(SMALL_ENEMY_BUILDERS[:6])
     entries.append(("build_pad_0", _build_pad(0)))
     entries.append(("build_pad_1", _build_pad(1)))
+    for index, emblem in enumerate(MEDALLION_EMBLEMS):
+        entries.append((f"node_{index}", _medallion(emblem)))
+    entries.append(("node_locked", _medallion(_emblem_lock, locked=True)))
+    for frame in range(SOLDIER_WALK_FRAMES):
+        entries.append((f"soldier_{frame}", _soldier(frame)))
+    entries.append(("soldier_strike", _soldier(0, strike=True)))
+    # The deeper roster goes last, so the cells above keep their places.
+    entries += _enemy_entries(SMALL_ENEMY_BUILDERS[6:])
     return _build_grid(PROP_CELL, entries)
 
 
 def build_props_husk():
-    """The armoured brute, on its own 40 pixel grid."""
-    entries = [(f"enemy_husk_{frame}", _enemy_husk(frame)) for frame in range(4)]
-    return _build_grid(HUSK_CELL, entries, columns=4)
+    """The heavy rank: the husk, the golem and the great slime, on a 48
+    pixel grid."""
+    return _build_grid(HUSK_CELL, _enemy_entries(HUSK_ENEMY_BUILDERS),
+                       columns=WALK_FRAMES)
 
 
 def build_props_titan():
-    """The boss, on its own 64 pixel grid."""
-    entries = [(f"enemy_titan_{frame}", _enemy_titan(frame))
-               for frame in range(4)]
-    return _build_grid(TITAN_CELL, entries, columns=4)
+    """The bosses, on their own 80 pixel grid."""
+    return _build_grid(TITAN_CELL, _enemy_entries(TITAN_ENEMY_BUILDERS),
+                       columns=WALK_FRAMES)
 
 
 def build_heroes():
-    """The hero sheet, on its own 40 pixel grid."""
-    entries = [("hero_warden_0", _hero_warden(0)),
-               ("hero_warden_1", _hero_warden(1)),
-               ("hero_warden_2", _hero_warden(2)),
-               ("hero_warden_3", _hero_warden(3))]
+    """The hero sheet, on its own 48 pixel grid."""
+    entries = [(f"hero_warden_{frame}", _hero_warden(frame))
+               for frame in range(4)]
     return _build_grid(HERO_CELL, entries, columns=4)
 
 
@@ -720,19 +1851,45 @@ def build_fx():
         entries.append((f"projectile_0_{frame}", _projectile(frame)))
     for frame in range(6):
         entries.append((f"spark_{frame}", _spark(frame)))
-    entries.append(("icon_heart", _icon_heart()))
-    entries.append(("icon_coin", _icon_coin()))
-    entries.append(("icon_flag", _icon_flag()))
-    entries.append(("icon_score", _icon_score()))
-    entries.append(("icon_nova", _icon_nova()))
-    entries.append(("icon_star", _icon_star()))
+    for frame in range(EMBER_FRAMES):
+        entries.append((f"ember_pot_{frame}", _ember_pot(frame)))
+    for frame in range(EMBER_FRAMES):
+        entries.append((f"ember_flame_{frame}", _ember_flame(frame)))
     return _build_grid(FX_CELL, entries)
+
+
+def build_icons():
+    """HUD glyphs and the build card portraits, on a 28 pixel grid."""
+    entries = [
+        ("icon_heart", _icon_heart()),
+        ("icon_coin", _icon_coin()),
+        ("icon_score", _icon_score()),
+        ("icon_star", _icon_star()),
+        ("icon_nova", _icon_nova()),
+        ("icon_flag", _icon_flag()),
+        ("card_guard", _card_icon(_guard_tower, 1)),
+        ("card_frost", _card_icon(_frost_tower, 1)),
+        ("card_siege", _card_icon(_siege_tower, 1)),
+        ("card_hero", _card_icon(_hero_warden, 0)),
+    ]
+    for key, builder, _branches in NEW_TOWERS:
+        entries.append((f"card_{key}", _card_icon(builder, 2)))
+    return _build_grid(ICON_CELL, entries)
+
+
+def build_castle_fx():
+    """The castle's banner and brazier fire, which move every frame."""
+    entries = [(f"castle_flag_{frame}", _castle_flag(frame))
+               for frame in range(CASTLE_FLAG_FRAMES)]
+    entries += [(f"castle_flame_{frame}", _castle_flame(frame))
+                for frame in range(CASTLE_FLAME_FRAMES)]
+    return _build_grid(CASTLE_FX_CELL, entries)
 
 
 PROPS_ANIMATIONS = [
     {"name": f"{name}_walk",
-     "frames": [f"enemy_{name}_{i}" for i in range(4)],
-     "frame_ticks": 5}
+     "frames": [f"enemy_{name}_{i}" for i in range(WALK_FRAMES)],
+     "frame_ticks": 4}
     for name, _builder in SMALL_ENEMY_BUILDERS
 ] + [
     {"name": "pad_pulse", "frames": ["build_pad_0", "build_pad_1"],
@@ -740,17 +1897,28 @@ PROPS_ANIMATIONS = [
 ]
 
 HUSK_ANIMATIONS = [
-    {"name": "husk_walk",
-     "frames": [f"enemy_husk_{i}" for i in range(4)],
-     "frame_ticks": 8},
+    {"name": f"{name}_walk",
+     "frames": [f"enemy_{name}_{i}" for i in range(WALK_FRAMES)],
+     "frame_ticks": 6}
+    for name, _builder in HUSK_ENEMY_BUILDERS
 ]
 
 TITAN_ANIMATIONS = [
-    {"name": "titan_walk",
-     "frames": [f"enemy_titan_{i}" for i in range(4)],
-     "frame_ticks": 10},
+    {"name": f"{name}_walk",
+     "frames": [f"enemy_{name}_{i}" for i in range(WALK_FRAMES)],
+     "frame_ticks": 8}
+    for name, _builder in TITAN_ENEMY_BUILDERS
 ]
 
 FX_ANIMATIONS = [
     {"name": "spark", "frames": [f"spark_{i}" for i in range(6)], "frame_ticks": 2},
+]
+
+CASTLE_FX_ANIMATIONS = [
+    {"name": "castle_flag",
+     "frames": [f"castle_flag_{i}" for i in range(CASTLE_FLAG_FRAMES)],
+     "frame_ticks": 5},
+    {"name": "castle_flame",
+     "frames": [f"castle_flame_{i}" for i in range(CASTLE_FLAME_FRAMES)],
+     "frame_ticks": 3},
 ]

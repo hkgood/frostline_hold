@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary
 #include <stdlib.h>
+#include <string.h>
 #include "include/app_game.h"
 
 struct app_game {
@@ -23,6 +24,7 @@ app_game_err_t app_game_create(const app_game_config_t *config, app_game_handle_
     }
     game->config = *config;
     fl_state_reset(&game->model, 0x464C5354u);
+    fl_state_open_menu(&game->model);
     *ret_handle = game;
     return APP_GAME_OK;
 }
@@ -41,7 +43,29 @@ void app_game_reset(app_game_handle_t game)
         game->state = (app_game_snapshot_t) {
             0
         };
+        /* A reset starts over from the map but keeps what was won. */
+        uint8_t stars[FL_MAX_LEVELS];
+        uint32_t best[FL_MAX_LEVELS];
+        memcpy(stars, game->model.level_stars, sizeof(stars));
+        memcpy(best, game->model.level_best, sizeof(best));
         fl_state_reset(&game->model, 0x464C5354u);
+        app_game_set_progress(game, stars, best, FL_MAX_LEVELS);
+        fl_state_open_menu(&game->model);
+    }
+}
+
+void app_game_set_progress(app_game_handle_t game, const uint8_t *stars,
+                           const uint32_t *best, int count)
+{
+    if (!game || !stars || !best) {
+        return;
+    }
+    for (int i = 0; i < count && i < FL_MAX_LEVELS; ++i) {
+        game->model.level_stars[i] = stars[i] > 3 ? 3 : stars[i];
+        game->model.level_best[i] = best[i];
+    }
+    if (game->model.phase == FL_PHASE_MENU) {
+        fl_state_open_menu(&game->model);   /* re-aim at the newest level */
     }
 }
 

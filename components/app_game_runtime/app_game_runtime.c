@@ -17,7 +17,9 @@ typedef struct {
     app_game_handle_t game;
     frostline_record_t record;
     frostline_audio_t audio;
-    bool recorded;   /* the finished run has already been written down */
+    uint16_t recorded_run; /* run_serial of the last run written down */
+    bool pointer_held;  /* one contact owns the pointer, whatever its id */
+    int32_t pointer_track;
 } host_state_t;
 
 static int initialize(void *value, const char *asset_root)
@@ -41,6 +43,8 @@ static int initialize(void *value, const char *asset_root)
         return -1;
     }
     frostline_record_load(&state->record);
+    app_game_set_progress(state->game, state->record.stars,
+                          state->record.best_score, FROSTLINE_RECORD_LEVELS);
     frostline_audio_init(&state->audio);
     InitWindow(GAME_WIDTH, GAME_HEIGHT, GAME_NAME);
     SetTargetFPS(GAME_TICK_HZ);
@@ -61,10 +65,21 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
     if (!event) {
         return;
     }
-    if (event->type == RAYLIB_LITE_GAME_INPUT_POINTER && event->track_id == 0) {
-        app_game_set_pointer(state->game, event->x, event->y, event->pressed);
-        if (event->pressed) {
-            frostline_audio_tap(&state->audio);
+    if (event->type == RAYLIB_LITE_GAME_INPUT_POINTER) {
+        /* The browser names the mouse pointer 1. The device names its primary
+         * touch 0. Own whichever contact arrives first and follow only that
+         * one, so a second finger cannot cancel the first. */
+        bool mine = state->pointer_held && state->pointer_track == event->track_id;
+        if (event->pressed && (!state->pointer_held || mine)) {
+            if (!state->pointer_held) {
+                frostline_audio_tap(&state->audio);
+            }
+            state->pointer_held = true;
+            state->pointer_track = event->track_id;
+            app_game_set_pointer(state->game, event->x, event->y, true);
+        } else if (!event->pressed && (!state->pointer_held || mine)) {
+            state->pointer_held = false;
+            app_game_set_pointer(state->game, event->x, event->y, false);
         }
     } else if (event->type == RAYLIB_LITE_GAME_INPUT_CONTROL) {
         switch (event->code) {
@@ -72,14 +87,16 @@ static void input(void *value, const raylib_lite_game_input_v1_t *event)
         case RAYLIB_LITE_GAME_CONTROL_RESUME: app_game_set_paused(state->game, false); break;
         case RAYLIB_LITE_GAME_CONTROL_RESET:
             app_game_reset(state->game);
-            state->recorded = false;
+            state->recorded_run = 0;
+            state->pointer_held = false;
             break;
         default: break;
         }
     } else if (event->type == RAYLIB_LITE_GAME_INPUT_ACTION && event->pressed) {
         if (event->code == GAME_ACTION_RESET) {
             app_game_reset(state->game);
-            state->recorded = false;
+            state->recorded_run = 0;
+            state->pointer_held = false;
         }
         if (event->code == GAME_ACTION_PAUSE) {
             app_game_set_paused(state->game, !app_game_read(state->game).paused);
@@ -102,19 +119,21 @@ static void update(void *value)
                      ? 1u : 0u;
     frame.kill_kind = model.last_kill_kind;
     frostline_audio_update(&state->audio, &frame);
-    /* When a run ends, write it down if it beat the record. */
-    if (model.phase != FL_PHASE_WON || state->recorded) {
+    /* A won run has already raised the level's entry in the model; copy it
+     * into the record once and store it if anything improved. */
+    if (model.phase != FL_PHASE_WON || state->recorded_run == model.run_serial) {
         return;
     }
-    state->recorded = true;
-    int stars = fl_star_rating(&model);
-    if (model.score > state->record.best_score) {
-        state->record.best_score = model.score;
-        state->record.best_wave = model.wave;
-        state->record.best_stars = (uint8_t)stars;
-        frostline_record_store(&state->record);
-    } else if (stars > state->record.best_stars) {
-        state->record.best_stars = (uint8_t)stars;
+    state->recorded_run = model.run_serial;
+    uint8_t level = model.level;
+    if (level >= FROSTLINE_RECORD_LEVELS) {
+        return;
+    }
+    bool better = model.level_stars[level] > state->record.stars[level]
+                  || model.level_best[level] > state->record.best_score[level];
+    if (better) {
+        state->record.stars[level] = model.level_stars[level];
+        state->record.best_score[level] = model.level_best[level];
         frostline_record_store(&state->record);
     }
 }
@@ -129,12 +148,10 @@ static int render(void *value)
         EndDrawing();
         return -1;
     }
-    ClearBackground(BLACK);
+    ClearBackground(FL_INK);
     host_state_t *state = value;
     fl_state_t model;
     app_game_get_model(state->game, &model);
-    model.best_score = state->record.best_score;
-    model.best_stars = state->record.best_stars;
     frostline_view_draw(&model);
     EndDrawing();
     return 0;

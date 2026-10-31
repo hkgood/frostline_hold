@@ -1,9 +1,9 @@
 {
   "image": "props_husk_atlas_source.png",
-  "columns": 4,
-  "rows": 1,
-  "output_cell": 44,
-  "output_columns": 4,
+  "columns": 6,
+  "rows": 4,
+  "output_cell": 52,
+  "output_columns": 6,
   "alpha_mode": "binary",
   "frames": [
     {
@@ -17,6 +17,66 @@
     },
     {
       "name": "enemy_husk_3"
+    },
+    {
+      "name": "enemy_husk_4"
+    },
+    {
+      "name": "enemy_husk_5"
+    },
+    {
+      "name": "enemy_golem_0"
+    },
+    {
+      "name": "enemy_golem_1"
+    },
+    {
+      "name": "enemy_golem_2"
+    },
+    {
+      "name": "enemy_golem_3"
+    },
+    {
+      "name": "enemy_golem_4"
+    },
+    {
+      "name": "enemy_golem_5"
+    },
+    {
+      "name": "enemy_golem_cracked_0"
+    },
+    {
+      "name": "enemy_golem_cracked_1"
+    },
+    {
+      "name": "enemy_golem_cracked_2"
+    },
+    {
+      "name": "enemy_golem_cracked_3"
+    },
+    {
+      "name": "enemy_golem_cracked_4"
+    },
+    {
+      "name": "enemy_golem_cracked_5"
+    },
+    {
+      "name": "enemy_slime_0"
+    },
+    {
+      "name": "enemy_slime_1"
+    },
+    {
+      "name": "enemy_slime_2"
+    },
+    {
+      "name": "enemy_slime_3"
+    },
+    {
+      "name": "enemy_slime_4"
+    },
+    {
+      "name": "enemy_slime_5"
     }
   ],
   "animations": [
@@ -26,9 +86,47 @@
         "enemy_husk_0",
         "enemy_husk_1",
         "enemy_husk_2",
-        "enemy_husk_3"
+        "enemy_husk_3",
+        "enemy_husk_4",
+        "enemy_husk_5"
       ],
-      "frame_ticks": 8
+      "frame_ticks": 6
+    },
+    {
+      "name": "golem_walk",
+      "frames": [
+        "enemy_golem_0",
+        "enemy_golem_1",
+        "enemy_golem_2",
+        "enemy_golem_3",
+        "enemy_golem_4",
+        "enemy_golem_5"
+      ],
+      "frame_ticks": 6
+    },
+    {
+      "name": "golem_cracked_walk",
+      "frames": [
+        "enemy_golem_cracked_0",
+        "enemy_golem_cracked_1",
+        "enemy_golem_cracked_2",
+        "enemy_golem_cracked_3",
+        "enemy_golem_cracked_4",
+        "enemy_golem_cracked_5"
+      ],
+      "frame_ticks": 6
+    },
+    {
+      "name": "slime_walk",
+      "frames": [
+        "enemy_slime_0",
+        "enemy_slime_1",
+        "enemy_slime_2",
+        "enemy_slime_3",
+        "enemy_slime_4",
+        "enemy_slime_5"
+      ],
+      "frame_ticks": 6
     }
   ]
 }

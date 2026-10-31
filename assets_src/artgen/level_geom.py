@@ -4,9 +4,10 @@ Coordinates are screen pixels on the 480x480 panel. The HUD occupies the top
 44px and the build bar the bottom 68px, so the visible battlefield is
 y in [PLAY_TOP, PLAY_BOTTOM).
 
-This module is the single source of truth for the art generator. The C model
-mirrors these values in components/app_game/data/frostline_level.h, and
-artgen/test_level_sync.py asserts the two never drift apart.
+This module holds what every level shares - the play area, the gate, the
+hero and enemy rosters, the wave timing - plus the geometry and waves of the
+first level, Frostline Pass. The campaign itself lives in artgen/levels.py;
+generate_level.py writes both into components/app_game/data/frostline_level.h.
 """
 
 def fillet_path(points, radius=16, segments=7):
@@ -101,6 +102,12 @@ HERO_BLOCK_RADIUS = 34
 #   2 banner     - hardens the allies around it
 #   3 sap        - blows a hole in the gate instead of walking through it
 #   4 titan      - the boss: too big to slow, too heavy to stun
+#   5 flyer      - over soldiers and heroes, out of the siege's reach
+#   6 golem      - its shell cracks at half health: no armour, faster
+#   7 splitter   - bursts into three slimelets when it dies
+#   8 burrower   - dives under the road now and then, unseen and faster
+#   9 wyrm       - the mine's boss: dives, surfaces with skitters
+#  10 king       - the fortress boss: freezes towers, wards itself twice
 ENEMY_WOLF = 0
 ENEMY_RAIDER = 1
 ENEMY_SKITTER = 2
@@ -109,12 +116,25 @@ ENEMY_SHAMAN = 4
 ENEMY_BANNERMAN = 5
 ENEMY_SAP = 6
 ENEMY_TITAN = 7
+ENEMY_CROW = 8
+ENEMY_GOLEM = 9
+ENEMY_SLIME = 10
+ENEMY_SLIMELET = 11
+ENEMY_BURROWER = 12
+ENEMY_WYRM = 13
+ENEMY_KING = 14
 
 ENEMY_BEHAVIOUR_PLAIN = 0
 ENEMY_BEHAVIOUR_HEALER = 1
 ENEMY_BEHAVIOUR_BANNER = 2
 ENEMY_BEHAVIOUR_SAP = 3
 ENEMY_BEHAVIOUR_TITAN = 4
+ENEMY_BEHAVIOUR_FLYER = 5
+ENEMY_BEHAVIOUR_GOLEM = 6
+ENEMY_BEHAVIOUR_SPLITTER = 7
+ENEMY_BEHAVIOUR_BURROWER = 8
+ENEMY_BEHAVIOUR_WYRM = 9
+ENEMY_BEHAVIOUR_KING = 10
 
 ENEMY_STATS = [
     (ENEMY_WOLF, "wolf", 40, 0, 52, 5, 10, ENEMY_BEHAVIOUR_PLAIN, 32),
@@ -125,6 +145,14 @@ ENEMY_STATS = [
     (ENEMY_BANNERMAN, "banner", 110, 6, 26, 15, 45, ENEMY_BEHAVIOUR_BANNER, 32),
     (ENEMY_SAP, "sap", 60, 0, 46, 12, 35, ENEMY_BEHAVIOUR_SAP, 32),
     (ENEMY_TITAN, "titan", 1200, 10, 16, 120, 400, ENEMY_BEHAVIOUR_TITAN, 64),
+    (ENEMY_CROW, "crow", 32, 0, 62, 6, 15, ENEMY_BEHAVIOUR_FLYER, 32),
+    (ENEMY_GOLEM, "golem", 330, 28, 18, 24, 70, ENEMY_BEHAVIOUR_GOLEM, 40),
+    (ENEMY_SLIME, "slime", 150, 0, 28, 10, 40, ENEMY_BEHAVIOUR_SPLITTER, 40),
+    (ENEMY_SLIMELET, "slimelet", 36, 0, 44, 2, 8, ENEMY_BEHAVIOUR_PLAIN, 32),
+    (ENEMY_BURROWER, "burrower", 120, 4, 34, 14, 45, ENEMY_BEHAVIOUR_BURROWER,
+     32),
+    (ENEMY_WYRM, "wyrm", 2600, 8, 14, 200, 800, ENEMY_BEHAVIOUR_WYRM, 64),
+    (ENEMY_KING, "king", 4200, 14, 12, 300, 1200, ENEMY_BEHAVIOUR_KING, 64),
 ]
 
 # Points awarded for clearing a wave, on top of the points from the kills.

@@ -1,6 +1,6 @@
 {
   "schema": "mosaico-game-assets/v1",
-  "limit_bytes": 4194304,
+  "limit_bytes": 8388608,
   "atlases": [
     {
       "config": "atlas_terrain.json",
@@ -36,6 +36,16 @@
       "config": "atlas_heroes.json",
       "source": "heroes_atlas_source.png",
       "output": "heroes.atlas"
+    },
+    {
+      "config": "atlas_icons.json",
+      "source": "icons_atlas_source.png",
+      "output": "icons.atlas"
+    },
+    {
+      "config": "atlas_castle_fx.json",
+      "source": "castle_fx_atlas_source.png",
+      "output": "castle_fx.atlas"
     }
   ],
   "maps": [],
@@ -65,7 +75,34 @@
       "source": "shot_siege.wav"
     },
     {
+      "source": "shot_storm.wav"
+    },
+    {
+      "source": "shot_rune.wav"
+    },
+    {
+      "source": "shot_ember.wav"
+    },
+    {
+      "source": "clash.wav"
+    },
+    {
       "source": "impact.wav"
+    },
+    {
+      "source": "crack.wav"
+    },
+    {
+      "source": "split.wav"
+    },
+    {
+      "source": "burrow.wav"
+    },
+    {
+      "source": "freeze.wav"
+    },
+    {
+      "source": "boss.wav"
     },
     {
       "source": "kill.wav"

@@ -1,8 +1,8 @@
 {
   "image": "props_atlas_source.png",
   "columns": 8,
-  "rows": 4,
-  "output_cell": 36,
+  "rows": 10,
+  "output_cell": 44,
   "output_columns": 8,
   "alpha_mode": "binary",
   "frames": [
@@ -19,6 +19,12 @@
       "name": "enemy_wolf_3"
     },
     {
+      "name": "enemy_wolf_4"
+    },
+    {
+      "name": "enemy_wolf_5"
+    },
+    {
       "name": "enemy_raider_0"
     },
     {
@@ -29,6 +35,12 @@
     },
     {
       "name": "enemy_raider_3"
+    },
+    {
+      "name": "enemy_raider_4"
+    },
+    {
+      "name": "enemy_raider_5"
     },
     {
       "name": "enemy_skitter_0"
@@ -43,6 +55,12 @@
       "name": "enemy_skitter_3"
     },
     {
+      "name": "enemy_skitter_4"
+    },
+    {
+      "name": "enemy_skitter_5"
+    },
+    {
       "name": "enemy_shaman_0"
     },
     {
@@ -53,6 +71,12 @@
     },
     {
       "name": "enemy_shaman_3"
+    },
+    {
+      "name": "enemy_shaman_4"
+    },
+    {
+      "name": "enemy_shaman_5"
     },
     {
       "name": "enemy_banner_0"
@@ -67,6 +91,12 @@
       "name": "enemy_banner_3"
     },
     {
+      "name": "enemy_banner_4"
+    },
+    {
+      "name": "enemy_banner_5"
+    },
+    {
       "name": "enemy_sap_0"
     },
     {
@@ -79,10 +109,130 @@
       "name": "enemy_sap_3"
     },
     {
+      "name": "enemy_sap_4"
+    },
+    {
+      "name": "enemy_sap_5"
+    },
+    {
       "name": "build_pad_0"
     },
     {
       "name": "build_pad_1"
+    },
+    {
+      "name": "node_0"
+    },
+    {
+      "name": "node_1"
+    },
+    {
+      "name": "node_2"
+    },
+    {
+      "name": "node_3"
+    },
+    {
+      "name": "node_4"
+    },
+    {
+      "name": "node_5"
+    },
+    {
+      "name": "node_6"
+    },
+    {
+      "name": "node_7"
+    },
+    {
+      "name": "node_locked"
+    },
+    {
+      "name": "soldier_0"
+    },
+    {
+      "name": "soldier_1"
+    },
+    {
+      "name": "soldier_2"
+    },
+    {
+      "name": "soldier_3"
+    },
+    {
+      "name": "soldier_strike"
+    },
+    {
+      "name": "enemy_crow_0"
+    },
+    {
+      "name": "enemy_crow_1"
+    },
+    {
+      "name": "enemy_crow_2"
+    },
+    {
+      "name": "enemy_crow_3"
+    },
+    {
+      "name": "enemy_crow_4"
+    },
+    {
+      "name": "enemy_crow_5"
+    },
+    {
+      "name": "enemy_slimelet_0"
+    },
+    {
+      "name": "enemy_slimelet_1"
+    },
+    {
+      "name": "enemy_slimelet_2"
+    },
+    {
+      "name": "enemy_slimelet_3"
+    },
+    {
+      "name": "enemy_slimelet_4"
+    },
+    {
+      "name": "enemy_slimelet_5"
+    },
+    {
+      "name": "enemy_burrower_0"
+    },
+    {
+      "name": "enemy_burrower_1"
+    },
+    {
+      "name": "enemy_burrower_2"
+    },
+    {
+      "name": "enemy_burrower_3"
+    },
+    {
+      "name": "enemy_burrower_4"
+    },
+    {
+      "name": "enemy_burrower_5"
+    },
+    {
+      "name": "enemy_burrower_under_0"
+    },
+    {
+      "name": "enemy_burrower_under_1"
+    },
+    {
+      "name": "enemy_burrower_under_2"
+    },
+    {
+      "name": "enemy_burrower_under_3"
+    },
+    {
+      "name": "enemy_burrower_under_4"
+    },
+    {
+      "name": "enemy_burrower_under_5"
     }
   ],
   "animations": [
@@ -92,9 +242,11 @@
         "enemy_wolf_0",
         "enemy_wolf_1",
         "enemy_wolf_2",
-        "enemy_wolf_3"
+        "enemy_wolf_3",
+        "enemy_wolf_4",
+        "enemy_wolf_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
     },
     {
       "name": "raider_walk",
@@ -102,9 +254,11 @@
         "enemy_raider_0",
         "enemy_raider_1",
         "enemy_raider_2",
-        "enemy_raider_3"
+        "enemy_raider_3",
+        "enemy_raider_4",
+        "enemy_raider_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
     },
     {
       "name": "skitter_walk",
@@ -112,9 +266,11 @@
         "enemy_skitter_0",
         "enemy_skitter_1",
         "enemy_skitter_2",
-        "enemy_skitter_3"
+        "enemy_skitter_3",
+        "enemy_skitter_4",
+        "enemy_skitter_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
     },
     {
       "name": "shaman_walk",
@@ -122,9 +278,11 @@
         "enemy_shaman_0",
         "enemy_shaman_1",
         "enemy_shaman_2",
-        "enemy_shaman_3"
+        "enemy_shaman_3",
+        "enemy_shaman_4",
+        "enemy_shaman_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
     },
     {
       "name": "banner_walk",
@@ -132,9 +290,11 @@
         "enemy_banner_0",
         "enemy_banner_1",
         "enemy_banner_2",
-        "enemy_banner_3"
+        "enemy_banner_3",
+        "enemy_banner_4",
+        "enemy_banner_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
     },
     {
       "name": "sap_walk",
@@ -142,9 +302,59 @@
         "enemy_sap_0",
         "enemy_sap_1",
         "enemy_sap_2",
-        "enemy_sap_3"
+        "enemy_sap_3",
+        "enemy_sap_4",
+        "enemy_sap_5"
       ],
-      "frame_ticks": 5
+      "frame_ticks": 4
+    },
+    {
+      "name": "crow_walk",
+      "frames": [
+        "enemy_crow_0",
+        "enemy_crow_1",
+        "enemy_crow_2",
+        "enemy_crow_3",
+        "enemy_crow_4",
+        "enemy_crow_5"
+      ],
+      "frame_ticks": 4
+    },
+    {
+      "name": "slimelet_walk",
+      "frames": [
+        "enemy_slimelet_0",
+        "enemy_slimelet_1",
+        "enemy_slimelet_2",
+        "enemy_slimelet_3",
+        "enemy_slimelet_4",
+        "enemy_slimelet_5"
+      ],
+      "frame_ticks": 4
+    },
+    {
+      "name": "burrower_walk",
+      "frames": [
+        "enemy_burrower_0",
+        "enemy_burrower_1",
+        "enemy_burrower_2",
+        "enemy_burrower_3",
+        "enemy_burrower_4",
+        "enemy_burrower_5"
+      ],
+      "frame_ticks": 4
+    },
+    {
+      "name": "burrower_under_walk",
+      "frames": [
+        "enemy_burrower_under_0",
+        "enemy_burrower_under_1",
+        "enemy_burrower_under_2",
+        "enemy_burrower_under_3",
+        "enemy_burrower_under_4",
+        "enemy_burrower_under_5"
+      ],
+      "frame_ticks": 4
     },
     {
       "name": "pad_pulse",

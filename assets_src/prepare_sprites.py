@@ -16,7 +16,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from artgen import sprites  # noqa: E402
-from artgen.ai_terrain import build_background  # noqa: E402
+from artgen import levels as campaign  # noqa: E402
+from artgen.ai_terrain import (  # noqa: E402
+    build_campaign_background, build_level_background,
+)
+from artgen.canvas import Canvas  # noqa: E402
+
+MAP_SIZE = 480
 
 
 def _write(source_name, config_name, canvas, frames, alpha_mode, output_cell,
@@ -38,14 +44,23 @@ def _write(source_name, config_name, canvas, frames, alpha_mode, output_cell,
 
 
 def main():
-    background = build_background()
-    background.to_image().save(HERE / "terrain_atlas_source.png")
+    # One opaque 480x480 frame per level, "map_<key>", then the campaign map.
+    maps = [(f"map_{level['key']}", build_level_background(level))
+            for level in campaign.LEVELS]
+    maps.append(("map_campaign", build_campaign_background()))
+    columns = 2
+    rows = (len(maps) + columns - 1) // columns
+    sheet = Canvas(MAP_SIZE * columns, MAP_SIZE * rows)
+    for index, (_name, canvas) in enumerate(maps):
+        sheet.blit(canvas, (index % columns) * MAP_SIZE,
+                   (index // columns) * MAP_SIZE)
+    sheet.to_image().save(HERE / "terrain_atlas_source.png")
     (HERE / "atlas_terrain.json").write_text(json.dumps({
         "image": "terrain_atlas_source.png",
-        "columns": 1, "rows": 1,
-        "output_cell": 480, "output_columns": 1,
+        "columns": columns, "rows": rows,
+        "output_cell": MAP_SIZE, "output_columns": columns,
         "alpha_mode": "opaque",
-        "frames": [{"name": "map_background"}],
+        "frames": [{"name": name} for name, _canvas in maps],
         "animations": [],
     }, indent=2) + "\n", encoding="utf-8")
 
@@ -60,12 +75,12 @@ def main():
     canvas, frames = sprites.build_props_husk()
     _write("props_husk_atlas_source.png", "atlas_props_husk.json", canvas,
            frames, "binary", sprites.HUSK_ATLAS_CELL, sprites.HUSK_ANIMATIONS,
-           columns=4)
+           columns=sprites.WALK_FRAMES)
 
     canvas, frames = sprites.build_props_titan()
     _write("props_titan_atlas_source.png", "atlas_props_titan.json", canvas,
            frames, "binary", sprites.TITAN_ATLAS_CELL,
-           sprites.TITAN_ANIMATIONS, columns=4)
+           sprites.TITAN_ANIMATIONS, columns=sprites.WALK_FRAMES)
 
     canvas, frames = sprites.build_heroes()
     _write("heroes_atlas_source.png", "atlas_heroes.json", canvas, frames,
@@ -74,6 +89,15 @@ def main():
     canvas, frames = sprites.build_fx()
     _write("fx_atlas_source.png", "atlas_fx.json", canvas, frames,
            "binary", sprites.FX_ATLAS_CELL, sprites.FX_ANIMATIONS)
+
+    canvas, frames = sprites.build_icons()
+    _write("icons_atlas_source.png", "atlas_icons.json", canvas, frames,
+           "binary", sprites.ICON_ATLAS_CELL, [])
+
+    canvas, frames = sprites.build_castle_fx()
+    _write("castle_fx_atlas_source.png", "atlas_castle_fx.json", canvas,
+           frames, "binary", sprites.CASTLE_FX_ATLAS_CELL,
+           sprites.CASTLE_FX_ANIMATIONS)
 
     print("sprite sheets regenerated")
 

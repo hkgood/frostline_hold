@@ -1,6 +1,7 @@
 import unittest
 
 from artgen import level_geom
+from artgen.canvas import INK_RGB, PAPER_RGB
 from artgen.terrain import build_background
 
 
@@ -44,10 +45,10 @@ class TestTerrain(unittest.TestCase):
         canvas = build_background()
         self.assertEqual((canvas.width, canvas.height), (480, 480))
 
-    def test_background_contains_only_black_and_white(self):
+    def test_background_contains_only_ink_and_paper(self):
         image = build_background().to_image()
         colors = {pixel[:3] for pixel in image.getdata() if pixel[3] == 255}
-        self.assertEqual(colors, {(0, 0, 0), (255, 255, 255)})
+        self.assertEqual(colors, {INK_RGB, PAPER_RGB})
 
     def test_background_is_fully_opaque(self):
         image = build_background().to_image()

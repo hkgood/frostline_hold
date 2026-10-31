@@ -1,11 +1,12 @@
-"""Pipeline tests: the packed atlases must stay strictly 1-bit.
+"""Pipeline tests: the packed atlases must stay strictly two-tone.
 
 The engine packer resamples a source crop whenever the source cell is larger
-than output_cell - 4, and LANCZOS turns pure black and white into grey. That
-silently breaks the art style, so the packed RGB565 payload is decoded and
-checked here.
+than output_cell - 4, and LANCZOS turns the two palette tones into a ramp.
+That silently breaks the art style, so the packed RGB565 payload is decoded
+and checked here.
 """
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -17,13 +18,23 @@ from PIL import Image
 
 ASSETS = Path(__file__).resolve().parent.parent
 PROJECT = ASSETS.parent
-ENGINE = PROJECT.parent.parent / "submodule" / "raylib-lite-engine"
+# The engine sits beside the project inside an ESP-Mosaic checkout; a project
+# kept elsewhere points at it with RAYLIB_LITE_ENGINE.
+ENGINE = Path(os.environ.get(
+    "RAYLIB_LITE_ENGINE",
+    PROJECT.parent.parent / "submodule" / "raylib-lite-engine"))
 
 ATLAS_HEADER = struct.Struct("<4sHHHHII")
 ATLAS_FRAME = struct.Struct("<IHHHHhh")
 
-WHITE = 0xFFFF
-BLACK = 0x0000
+# The warm ink and paper of the palette, as RGB565.
+INK = 0x3165
+PAPER = 0xB575
+# Fully transparent sprite pixels carry no colour of their own.
+CLEAR = 0x0000
+SPRITE_ATLASES = ("units.atlas", "props.atlas", "fx.atlas", "props_husk.atlas",
+                  "props_titan.atlas", "heroes.atlas", "icons.atlas",
+                  "castle_fx.atlas")
 
 
 def _atlas_colours(path):
@@ -75,14 +86,13 @@ class TestAssetPipeline(unittest.TestCase):
                 self.assertEqual(cell_w, output_cell - 4, manifest_path.name)
                 self.assertEqual(cell_h, output_cell - 4, manifest_path.name)
 
-    def test_every_atlas_is_strictly_one_bit(self):
-        for name in ("terrain.atlas", "units.atlas", "props.atlas", "fx.atlas",
-                     "props_husk.atlas", "props_titan.atlas"):
+    def test_every_atlas_is_strictly_two_tone(self):
+        for name in SPRITE_ATLASES:
             path = self.output / name
             self.assertTrue(path.exists(), name)
             _w, _h, _frames, _alpha, colours = _atlas_colours(path)
             self.assertTrue(
-                colours <= {BLACK, WHITE},
+                colours <= {INK, PAPER, CLEAR},
                 "%s has %d colours, e.g. %s" % (name, len(colours),
                                                  [hex(c) for c in sorted(colours)[:6]]),
             )
@@ -90,11 +100,10 @@ class TestAssetPipeline(unittest.TestCase):
     def test_terrain_atlas_is_opaque_with_no_alpha_channel(self):
         _w, _h, _frames, alpha_len, colours = _atlas_colours(self.output / "terrain.atlas")
         self.assertEqual(alpha_len, 0)
-        self.assertEqual(colours, {BLACK, WHITE})
+        self.assertEqual(colours, {INK, PAPER})
 
     def test_sprite_atlases_use_binary_alpha(self):
-        for name in ("units.atlas", "props.atlas", "fx.atlas",
-                     "props_husk.atlas", "props_titan.atlas"):
+        for name in SPRITE_ATLASES:
             _w, _h, _frames, alpha_len, _colours = _atlas_colours(self.output / name)
             self.assertGreater(alpha_len, 0, name)
 
@@ -103,15 +112,18 @@ class TestAssetPipeline(unittest.TestCase):
         self.assertEqual(sprites.UNIT_ATLAS_CELL, sprites.UNIT_CELL + 4)
         self.assertEqual(sprites.PROP_ATLAS_CELL, sprites.PROP_CELL + 4)
         self.assertEqual(sprites.FX_ATLAS_CELL, sprites.FX_CELL + 4)
+        self.assertEqual(sprites.ICON_ATLAS_CELL, sprites.ICON_CELL + 4)
+        self.assertEqual(sprites.CASTLE_FX_ATLAS_CELL, sprites.CASTLE_FX_CELL + 4)
 
-    def test_generated_sources_contain_only_black_white_and_transparent(self):
-        from PIL import Image
-        for name in ("units_atlas_source.png", "props_atlas_source.png",
-                     "fx_atlas_source.png", "terrain_atlas_source.png"):
+    def test_generated_sources_contain_only_ink_paper_and_transparent(self):
+        from artgen.canvas import INK_RGB, PAPER_RGB
+        allowed = {(0, 0, 0, 0), INK_RGB + (255,), PAPER_RGB + (255,)}
+        for manifest_path in sorted(ASSETS.glob("atlas_*.json")):
+            name = json.loads(manifest_path.read_text(encoding="utf-8"))["image"]
             image = Image.open(ASSETS / name).convert("RGBA")
             colours = set(image.getdata())
             self.assertTrue(
-                colours <= {(0, 0, 0, 0), (0, 0, 0, 255), (255, 255, 255, 255)},
+                colours <= allowed,
                 "%s -> %s" % (name, sorted(colours)[:6]),
             )
 

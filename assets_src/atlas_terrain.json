@@ -1,13 +1,22 @@
 {
   "image": "terrain_atlas_source.png",
-  "columns": 1,
-  "rows": 1,
+  "columns": 2,
+  "rows": 2,
   "output_cell": 480,
-  "output_columns": 1,
+  "output_columns": 2,
   "alpha_mode": "opaque",
   "frames": [
     {
-      "name": "map_background"
+      "name": "map_pass"
+    },
+    {
+      "name": "map_mere"
+    },
+    {
+      "name": "map_ridge"
+    },
+    {
+      "name": "map_campaign"
     }
   ],
   "animations": []

@@ -7,15 +7,19 @@
 extern "C" {
 #endif
 
-/* The best run the player has managed on this device. */
+#define FROSTLINE_RECORD_VERSION 2
+#define FROSTLINE_RECORD_LEVELS 8   /* matches FL_MAX_LEVELS in the model */
+
+/* The campaign as the player left it on this device: per level, the stars
+ * earned (0 = not cleared yet) and the best score. */
 typedef struct {
-    uint32_t best_score;
-    uint32_t best_wave;
-    uint8_t best_stars;
-    uint8_t version;
+    uint32_t version;
+    uint32_t best_score[FROSTLINE_RECORD_LEVELS];
+    uint8_t stars[FROSTLINE_RECORD_LEVELS];
 } frostline_record_t;
 
-/* Load the stored record. A missing or damaged record reads as zeroes. */
+/* Load the stored record. A missing or damaged record reads as zeroes; a
+ * record from the single-level game becomes the first level's entry. */
 bool frostline_record_load(frostline_record_t *record);
 
 /* Store the record. On the device this goes to NVS, on the Host to a file

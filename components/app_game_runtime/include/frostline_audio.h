@@ -23,6 +23,10 @@ typedef enum {
     FL_SFX_SHOT_GUARD,
     FL_SFX_SHOT_FROST,
     FL_SFX_SHOT_SIEGE,
+    FL_SFX_SHOT_STORM,
+    FL_SFX_SHOT_RUNE,
+    FL_SFX_SHOT_EMBER,
+    FL_SFX_CLASH,
     FL_SFX_IMPACT,
     FL_SFX_KILL,
     FL_SFX_LEAK,
@@ -33,6 +37,11 @@ typedef enum {
     FL_SFX_NOVA,
     FL_SFX_WIN,
     FL_SFX_LOSE,
+    FL_SFX_CRACK,
+    FL_SFX_SPLIT,
+    FL_SFX_BURROW,
+    FL_SFX_FREEZE,
+    FL_SFX_BOSS,
     FL_SFX_COUNT,
 } fl_sfx_t;
 

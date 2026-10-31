@@ -1,9 +1,16 @@
 """Strict 1-bit pixel canvas.
 
-A pixel is one of three states: unset (transparent), black, or white. No grey
-value is ever produced, so dithering is the only way to express tone.
+A pixel is one of three states: unset (transparent), ink, or paper. No third
+colour is ever produced, so dithering is the only way to express tone.
+
+BLACK and WHITE name the two states. On export they become the warm two-tone
+palette below, which is what the panel shows.
 """
 from PIL import Image
+
+# Ink and paper of the warm two-tone palette, in RGB.
+INK_RGB = (0x31, 0x2F, 0x28)
+PAPER_RGB = (0xB1, 0xAF, 0xA8)
 
 BAYER8 = [
     [0, 32, 8, 40, 2, 34, 10, 42],
@@ -217,11 +224,13 @@ class Canvas:
     def to_image(self):
         img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         data = []
+        ink = INK_RGB + (255,)
+        paper = PAPER_RGB + (255,)
         for state in self.pixels:
             if state == _STATE_WHITE:
-                data.append((255, 255, 255, 255))
+                data.append(paper)
             elif state == _STATE_BLACK:
-                data.append((0, 0, 0, 255))
+                data.append(ink)
             else:
                 data.append((0, 0, 0, 0))
         img.putdata(data)

@@ -1,8 +1,8 @@
 {
   "image": "units_atlas_source.png",
   "columns": 8,
-  "rows": 2,
-  "output_cell": 52,
+  "rows": 4,
+  "output_cell": 60,
   "output_columns": 8,
   "alpha_mode": "binary",
   "frames": [
@@ -41,6 +41,54 @@
     },
     {
       "name": "tower_siege_lv3b"
+    },
+    {
+      "name": "tower_storm_lv1"
+    },
+    {
+      "name": "tower_storm_lv2"
+    },
+    {
+      "name": "tower_storm_lv3a"
+    },
+    {
+      "name": "tower_storm_lv3b"
+    },
+    {
+      "name": "tower_rune_lv1"
+    },
+    {
+      "name": "tower_rune_lv2"
+    },
+    {
+      "name": "tower_rune_lv3a"
+    },
+    {
+      "name": "tower_rune_lv3b"
+    },
+    {
+      "name": "tower_barracks_lv1"
+    },
+    {
+      "name": "tower_barracks_lv2"
+    },
+    {
+      "name": "tower_barracks_lv3a"
+    },
+    {
+      "name": "tower_barracks_lv3b"
+    },
+    {
+      "name": "tower_ember_lv1"
+    },
+    {
+      "name": "tower_ember_lv2"
+    },
+    {
+      "name": "tower_ember_lv3a"
+    },
+    {
+      "name": "tower_ember_lv3b"
     }
   ],
   "animations": []

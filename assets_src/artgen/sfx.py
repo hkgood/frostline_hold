@@ -125,6 +125,57 @@ def shot_siege():
     return buffer
 
 
+def shot_storm():
+    """Lightning: a hard crack, a crackle of short bursts, a low rumble."""
+    buffer = audio.Buffer(0.34)
+    buffer.add(_click(4200.0, 0.9, 0.002))
+    # The crackle: a few very short noise bursts, each a little lower.
+    for index, offset in enumerate((0.0, 0.018, 0.041, 0.07)):
+        burst = audio.svf(audio.noise(0.03, 0.7 - index * 0.12, decay=0.008,
+                                      seed=40 + index),
+                          3600.0 - index * 600.0, 1.5, "band")
+        buffer.add(burst, offset)
+    buffer.add(audio.tone(110.0, 70.0, 0.28, "sine", 0.35, decay=0.1), 0.02)
+    return buffer
+
+
+def shot_rune():
+    """The rune beam: a glassy chord that swells and is gone."""
+    buffer = audio.Buffer(0.32)
+    for freq, weight in ((audio.note_frequency("E5"), 0.3),
+                          (audio.note_frequency("B5"), 0.2),
+                          (audio.note_frequency("E6"), 0.12)):
+        buffer.add(audio.tone(freq, freq * 1.015, 0.26, "sine", weight,
+                              attack=0.02, decay=0.09, vibrato=0.01,
+                              vibrato_rate=9.0))
+    buffer.add(_click(5200.0, 0.2, 0.002))
+    return buffer
+
+
+def shot_ember():
+    """A fire pot thrown: a soft whoosh that catches with a dull whoomp."""
+    buffer = audio.Buffer(0.36)
+    count = int(0.2 * RATE)
+    sweep = audio.sweep(600.0, 2400.0, count, "exp")
+    buffer.add(audio.svf(audio.noise(0.2, 0.6, decay=0.08, attack=0.03),
+                         sweep, 1.0, "band"))
+    buffer.add(audio.tone(160.0, 80.0, 0.2, "sine", 0.5, decay=0.07), 0.08)
+    buffer.add(audio.svf(audio.noise(0.14, 0.35, decay=0.06), 500.0, 0.9,
+                         "low"), 0.08)
+    return buffer
+
+
+def clash():
+    """Steel on steel at the barracks line: a short ring over a thud."""
+    buffer = audio.Buffer(0.22)
+    buffer.add(_bell(2350.0, 0.16, 0.32, 0.04,
+                     partials=((1.0, 1.0), (2.76, 0.5), (5.4, 0.2))))
+    buffer.add(_click(3800.0, 0.5, 0.002))
+    buffer.add(audio.svf(audio.noise(0.06, 0.3, decay=0.02), 600.0, 1.0,
+                         "low"))
+    return buffer
+
+
 def impact():
     """The area blast: a wide burst of noise falling away over a thump."""
     buffer = audio.Buffer(0.55)
@@ -135,6 +186,65 @@ def impact():
     buffer.add(audio.tone(130.0, 55.0, 0.34, "sine", 0.75, decay=0.2))
     buffer.add(audio.svf(audio.noise(0.12, 0.35, decay=0.05), 1600.0, 0.8,
                          "band"), 0.0)
+    return buffer
+
+
+def crack():
+    """A golem's shell gives way: a stone split and the patter of chips."""
+    buffer = audio.Buffer(0.42)
+    buffer.add(_click(1800.0, 1.0, 0.004))
+    buffer.add(_wood(190.0, 90.0, 0.24, 0.9, decay=0.06))
+    for index, offset in enumerate((0.07, 0.12, 0.18, 0.25)):
+        chip = audio.svf(audio.noise(0.03, 0.4 - index * 0.07, decay=0.01,
+                                     seed=60 + index),
+                         2600.0 - index * 300.0, 1.4, "band")
+        buffer.add(chip, offset)
+    return buffer
+
+
+def split():
+    """A slime bursts: a wet slap with a wobble that settles."""
+    buffer = audio.Buffer(0.36)
+    buffer.add(audio.svf(audio.noise(0.08, 0.9, decay=0.025), 700.0, 1.3,
+                         "band"))
+    buffer.add(audio.tone(330.0, 140.0, 0.26, "sine", 0.55, decay=0.09,
+                          vibrato=0.08, vibrato_rate=18.0), 0.01)
+    return buffer
+
+
+def burrow():
+    """Something digs in or out: a short grinding rumble of earth."""
+    buffer = audio.Buffer(0.4)
+    buffer.add(audio.svf(audio.noise(0.34, 0.8, decay=0.14, attack=0.04),
+                         380.0, 0.9, "low"))
+    buffer.add(audio.tone(95.0, 70.0, 0.3, "triangle", 0.4, decay=0.12))
+    return buffer
+
+
+def freeze():
+    """The king's cold locks a tower: a rising hiss that snaps shut."""
+    buffer = audio.Buffer(0.6)
+    count = int(0.36 * RATE)
+    sweep = audio.sweep(1200.0, 6200.0, count, "exp")
+    buffer.add(audio.svf(audio.noise(0.36, 0.8, decay=0.2, attack=0.05),
+                         sweep, 1.8, "band"))
+    buffer.add(_click(5000.0, 0.8, 0.002), 0.36)
+    buffer.add(_bell(audio.note_frequency("B6"), 0.2, 0.28, 0.06,
+                     partials=((1.0, 1.0), (2.4, 0.4))), 0.36)
+    return buffer
+
+
+def boss():
+    """A boss comes up the road: a low horn over a ground shake."""
+    buffer = audio.Buffer(1.3)
+    for freq, offset in ((73.0, 0.0), (69.0, 0.45)):
+        buffer.add(audio.tone(freq, freq * 0.97, 0.75, "saw", 0.5, attack=0.08,
+                              decay=0.32, vibrato=0.01, vibrato_rate=4.0),
+                   offset)
+        buffer.add(audio.tone(freq * 3.0, freq * 2.9, 0.6, "sine", 0.14,
+                              attack=0.1, decay=0.25), offset)
+    buffer.add(audio.svf(audio.noise(1.0, 0.5, decay=0.45, attack=0.1), 240.0,
+                         0.8, "low"))
     return buffer
 
 
@@ -325,7 +435,16 @@ CATALOGUE = {
     "shot_guard": shot_guard,
     "shot_frost": shot_frost,
     "shot_siege": shot_siege,
+    "shot_storm": shot_storm,
+    "shot_rune": shot_rune,
+    "shot_ember": shot_ember,
+    "clash": clash,
     "impact": impact,
+    "crack": crack,
+    "split": split,
+    "burrow": burrow,
+    "freeze": freeze,
+    "boss": boss,
     "kill": kill,
     "leak": leak,
     "wave_start": wave_start,

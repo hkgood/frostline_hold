@@ -1,7 +1,7 @@
 {
   "image": "fx_atlas_source.png",
   "columns": 8,
-  "rows": 2,
+  "rows": 3,
   "output_cell": 20,
   "output_columns": 8,
   "alpha_mode": "binary",
@@ -34,22 +34,28 @@
       "name": "spark_5"
     },
     {
-      "name": "icon_heart"
+      "name": "ember_pot_0"
     },
     {
-      "name": "icon_coin"
+      "name": "ember_pot_1"
     },
     {
-      "name": "icon_flag"
+      "name": "ember_pot_2"
     },
     {
-      "name": "icon_score"
+      "name": "ember_pot_3"
     },
     {
-      "name": "icon_nova"
+      "name": "ember_flame_0"
     },
     {
-      "name": "icon_star"
+      "name": "ember_flame_1"
+    },
+    {
+      "name": "ember_flame_2"
+    },
+    {
+      "name": "ember_flame_3"
     }
   ],
   "animations": [

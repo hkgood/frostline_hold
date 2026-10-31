@@ -134,8 +134,8 @@ static void test_score_counts_kills_and_cleared_waves(void)
     assert(state.wave == 2);
     /* Four wolves at ten points each, plus the bonus the wave pays. */
     assert(state.score_kills == 40);
-    assert(state.score_waves == FL_WAVES[0].score_bonus);
-    assert(state.score == (uint32_t)(40 + FL_WAVES[0].score_bonus));
+    assert(state.score_waves == FL_LEVELS[0].waves[0].score_bonus);
+    assert(state.score == (uint32_t)(40 + FL_LEVELS[0].waves[0].score_bonus));
     assert(state.leaks == 0);
     assert(state.score_bonus == 0);
 }
@@ -310,8 +310,8 @@ static void test_a_hero_stands_on_a_post(void)
     assert(state.gold == gold - FL_HERO_STATS[FL_HERO_WARDEN].cost);
     assert(state.heroes[0].active);
     assert(state.heroes[0].alive);
-    assert(state.heroes[0].x == FL_HERO_POSTS[0].x);
-    assert(state.heroes[0].y == FL_HERO_POSTS[0].y);
+    assert(state.heroes[0].x == FL_LEVELS[0].posts[0].x);
+    assert(state.heroes[0].y == FL_LEVELS[0].posts[0].y);
     /* The second post is still free. */
     assert(!state.heroes[1].active);
     /* The hero cannot pay for itself twice. */
@@ -382,29 +382,6 @@ static void test_state_hash_is_stable_for_the_same_seed(void)
         fl_state_update(&b);
     }
     assert(fl_state_hash(&a) == fl_state_hash(&b));
-}
-
-static void test_pointer_selects_a_tower_card(void)
-{
-    fl_state_t state;
-    fl_state_reset(&state, 1u);
-    /* Tap the second card in the build bar. */
-    fl_set_pointer(&state, 150, 430, true);
-    fl_set_pointer(&state, 150, 430, false);
-    assert(state.selected_kind == FL_TOWER_FROST);
-}
-
-static void test_pointer_builds_on_a_spot(void)
-{
-    fl_state_t state;
-    fl_state_reset(&state, 1u);
-    fl_set_pointer(&state, 150, 430, true);
-    fl_set_pointer(&state, 150, 430, false);
-    fl_set_pointer(&state, 58, 108, true);
-    fl_set_pointer(&state, 58, 108, false);
-    assert(state.towers[0].active);
-    assert(state.towers[0].kind == FL_TOWER_FROST);
-    assert(state.gold == 190 - 120);
 }
 
 static void test_speed_multiplier_advances_faster(void)
@@ -530,8 +507,755 @@ static void test_the_frost_nova_raises_an_event(void)
     assert(fl_events_take(&state) & FL_EVENT_NOVA);
 }
 
+/* --- campaign ------------------------------------------------------- */
+
+static void tap(fl_state_t *state, int x, int y)
+{
+    fl_set_pointer(state, x, y, true);
+    fl_set_pointer(state, x, y, false);
+}
+
+static void tap_panel(fl_state_t *state, int button)
+{
+    int x, y, w, h;
+    fl_panel_button_rect(button, &x, &y, &w, &h);
+    tap(state, x + w / 2, y + h / 2);
+}
+
+/* Play the level out by force: every wave is marked spent and cleared. */
+static void win_level(fl_state_t *state, uint8_t lives)
+{
+    state->lives = lives;
+    state->phase = FL_PHASE_WAVE;
+    state->wave = fl_wave_count(state);
+    state->batch_index = FL_BATCH_MAX;
+    fl_state_update(state);
+    assert(state->phase == FL_PHASE_WON);
+}
+
+static void test_only_the_first_level_is_open_at_first(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(fl_level_count() >= 3);
+    assert(fl_level_unlocked(&state, 0));
+    assert(!fl_level_unlocked(&state, 1));
+    assert(!fl_state_start_level(&state, 1));
+    assert(!fl_level_unlocked(&state, fl_level_count()));
+}
+
+static void test_winning_a_level_opens_the_next(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    win_level(&state, 20);
+    assert(state.level_stars[0] == 3);
+    assert(state.level_best[0] == state.score);
+    assert(fl_level_unlocked(&state, 1));
+    /* A worse run never lowers the record. */
+    assert(fl_state_start_level(&state, 0));
+    win_level(&state, 3);
+    assert(state.level_stars[0] == 3);
+}
+
+static void test_the_next_button_starts_the_next_level(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    win_level(&state, 20);
+    tap_panel(&state, FL_PANEL_BTN_NEXT);
+    assert(state.phase == FL_PHASE_PREP);
+    assert(state.level == 1);
+    assert(state.gold == FL_LEVELS[1].start_gold);
+    assert(state.wave == 1);
+    /* The progress survives the new run. */
+    assert(state.level_stars[0] == 3);
+}
+
+static void test_a_lost_run_offers_retry_and_map_only(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_LOST;
+    tap_panel(&state, FL_PANEL_BTN_NEXT);
+    assert(state.phase == FL_PHASE_LOST);
+    tap_panel(&state, FL_PANEL_BTN_RETRY);
+    assert(state.phase == FL_PHASE_PREP);
+    assert(state.level == 0);
+    state.phase = FL_PHASE_LOST;
+    tap_panel(&state, FL_PANEL_BTN_MAP);
+    assert(state.phase == FL_PHASE_MENU);
+}
+
+static void test_the_map_picks_and_starts_a_level(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.level_stars[0] = 2;
+    fl_state_open_menu(&state);
+    assert(state.phase == FL_PHASE_MENU);
+    /* The map points at the newest open level. */
+    assert(state.menu_level == 1);
+    /* A locked node cannot be picked. */
+    tap(&state, FL_LEVELS[2].node.x, FL_LEVELS[2].node.y);
+    assert(state.menu_level == 1);
+    tap(&state, FL_LEVELS[0].node.x, FL_LEVELS[0].node.y);
+    assert(state.menu_level == 0);
+    /* Time passes on the map without starting a wave. */
+    for (int i = 0; i < 1000; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.phase == FL_PHASE_MENU);
+    tap(&state, FL_MENU_GO_X + 10, FL_MENU_GO_Y + 10);
+    assert(state.phase == FL_PHASE_PREP);
+    assert(state.level == 0);
+    assert(fl_events_take(&state) & FL_EVENT_LEVEL_START);
+}
+
+static void test_the_pause_panel_resumes_and_leaves(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    tap(&state, FL_PAUSE_BTN_X + 4, FL_BTN_Y + 4);
+    assert(state.paused);
+    /* The battlefield does not listen while paused. */
+    tap(&state, 58, 108);
+    assert(state.ring_spot == -1);
+    tap_panel(&state, FL_PANEL_BTN_NEXT);
+    assert(!state.paused);
+    tap(&state, FL_PAUSE_BTN_X + 4, FL_BTN_Y + 4);
+    tap_panel(&state, FL_PANEL_BTN_MAP);
+    assert(state.phase == FL_PHASE_MENU);
+    assert(!state.paused);
+}
+
+static void test_every_level_walks_from_spawn_to_the_gate(void)
+{
+    for (uint8_t level = 0; level < FL_LEVEL_COUNT; ++level) {
+        fl_state_t state;
+        fl_state_reset(&state, 1u);
+        for (uint8_t i = 0; i < level; ++i) {
+            state.level_stars[i] = 1;
+        }
+        assert(fl_state_start_level(&state, level));
+        const fl_level_t *data = &FL_LEVELS[level];
+        assert(data->lane_a[data->lane_a_count - 1].x == FL_GOAL.x);
+        assert(data->lane_a[data->lane_a_count - 1].y == FL_GOAL.y);
+        /* A lone wolf on each lane reaches the gate and costs one life. */
+        for (uint8_t lane = 0; lane < 2; ++lane) {
+            if (lane == 1 && data->lane_b_count == 0) {
+                continue;
+            }
+            fl_state_start_level(&state, level);
+            state.phase = FL_PHASE_WAVE;
+            state.batch_index = FL_BATCH_MAX;
+            state.enemies[0].kind = FL_ENEMY_WOLF;
+            state.enemies[0].hp = state.enemies[0].max_hp = 1e6f;
+            state.enemies[0].lane = lane;
+            state.enemies[0].alive = 1;
+            for (int t = 0; t < 30 * 300 && state.leaks == 0; ++t) {
+                fl_state_update(&state);
+            }
+            assert(state.leaks == 1);
+            assert(state.lives == data->lives - 1);
+        }
+    }
+}
+
+/* --- build ring ------------------------------------------------------ */
+
+/* The medallion of an entry in the open ring, or -1. */
+static int ring_index(const fl_state_t *state, uint8_t entry)
+{
+    for (int i = 0; i < fl_ring_count(state); ++i) {
+        if (fl_ring_entry(state, i) == entry) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void tap_ring(fl_state_t *state, int index)
+{
+    int x, y;
+    fl_ring_slot(state, index, &x, &y);
+    tap(state, x, y);
+}
+
+static void test_a_pad_opens_the_ring_with_the_levels_towers(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    tap(&state, 58, 108);
+    assert(state.ring_spot == 0);
+    assert(fl_ring_count(&state) == 3);
+    assert(fl_ring_entry(&state, 0) == FL_TOWER_GUARD);
+    assert(fl_ring_entry(&state, 1) == FL_TOWER_FROST);
+    assert(fl_ring_entry(&state, 2) == FL_TOWER_SIEGE);
+    assert(fl_ring_cost(&state, 1) == FL_TOWER_LEVELS[FL_TOWER_FROST][0].cost);
+    /* Tapping the pad again puts the ring away. */
+    tap(&state, 58, 108);
+    assert(state.ring_spot == -1);
+    assert(fl_ring_count(&state) == 0);
+}
+
+static void test_the_first_tap_picks_and_the_second_builds(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    tap(&state, 58, 108);
+    int frost = ring_index(&state, FL_TOWER_FROST);
+    tap_ring(&state, frost);
+    assert(state.ring_pick == frost);
+    assert(!state.towers[0].active);
+    tap_ring(&state, frost);
+    assert(state.towers[0].active);
+    assert(state.towers[0].kind == FL_TOWER_FROST);
+    assert(state.gold == 190 - 120);
+    assert(state.ring_spot == -1);
+}
+
+static void test_a_tap_off_the_ring_closes_it(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    tap(&state, 58, 108);
+    tap(&state, 300, 140);
+    assert(state.ring_spot == -1);
+    assert(!state.towers[0].active);
+    /* A tap on another pad moves the ring there in one go. */
+    tap(&state, 58, 108);
+    tap(&state, 186, 244);
+    assert(state.ring_spot == 5);
+}
+
+static void test_short_of_gold_the_ring_stays_open(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.gold = 50;
+    tap(&state, 58, 108);
+    int guard = ring_index(&state, FL_TOWER_GUARD);
+    tap_ring(&state, guard);
+    (void)fl_events_take(&state);
+    tap_ring(&state, guard);
+    assert(!state.towers[0].active);
+    assert(state.ring_spot == 0);
+    assert(fl_events_take(&state) & FL_EVENT_DENIED);
+}
+
+static void test_a_free_post_opens_the_hero_ring(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    tap(&state, 56, 232);
+    assert(state.ring_post == 0);
+    assert(fl_ring_count(&state) == 1);
+    assert(fl_ring_entry(&state, 0) == FL_RING_HERO);
+    tap_ring(&state, 0);
+    tap_ring(&state, 0);
+    assert(state.heroes[0].active);
+    assert(state.ring_post == -1);
+    /* A post that is taken opens nothing. */
+    tap(&state, 56, 232);
+    assert(state.ring_post == -1);
+}
+
+/* Inside the rounded glass, clear of the HUD, with a whole medallion. */
+static bool on_the_glass(int x, int y)
+{
+    const int r = FL_RING_ICON_R;
+    if (x < r || x > FL_VIEW_WIDTH - r || y > FL_VIEW_HEIGHT - r
+            || y < FL_HUD_Y + FL_HUD_H + r) {
+        return false;
+    }
+    int cx = x < FL_CORNER_RADIUS ? FL_CORNER_RADIUS
+           : (x > FL_VIEW_WIDTH - FL_CORNER_RADIUS
+              ? FL_VIEW_WIDTH - FL_CORNER_RADIUS : x);
+    int cy = y < FL_CORNER_RADIUS ? FL_CORNER_RADIUS
+           : (y > FL_VIEW_HEIGHT - FL_CORNER_RADIUS
+              ? FL_VIEW_HEIGHT - FL_CORNER_RADIUS : y);
+    int dx = x - cx;
+    int dy = y - cy;
+    return (dx * dx + dy * dy) <= (FL_CORNER_RADIUS - r) * (FL_CORNER_RADIUS - r);
+}
+
+static void test_every_medallion_stays_on_the_glass(void)
+{
+    for (uint8_t level = 0; level < FL_LEVEL_COUNT; ++level) {
+        fl_state_t state;
+        fl_state_reset(&state, 1u);
+        for (uint8_t i = 0; i < level; ++i) {
+            state.level_stars[i] = 1;
+        }
+        assert(fl_state_start_level(&state, level));
+        const fl_level_t *data = &FL_LEVELS[level];
+        for (int spot = 0; spot < data->spot_count; ++spot) {
+            state.ring_spot = (int8_t)spot;
+            for (int i = 0; i < fl_ring_count(&state); ++i) {
+                int x, y;
+                fl_ring_slot(&state, i, &x, &y);
+                assert(on_the_glass(x, y));
+            }
+        }
+        state.ring_spot = -1;
+        for (int post = 0; post < data->post_count; ++post) {
+            state.ring_post = (int8_t)post;
+            int x, y;
+            fl_ring_slot(&state, 0, &x, &y);
+            assert(on_the_glass(x, y));
+        }
+    }
+}
+
+/* --- the newer towers ------------------------------------------------ */
+
+/* The first level does not offer the newer towers yet, so build a guard
+ * on the first pad and swap its kind: the pad, the price and the rally
+ * point are all the same. */
+static fl_tower_t *force_tower(fl_state_t *state, fl_tower_kind_t kind)
+{
+    assert(fl_build_tower(state, 58, 108, FL_TOWER_GUARD));
+    state->towers[0].kind = kind;
+    state->phase = FL_PHASE_WAVE;
+    state->batch_index = FL_BATCH_MAX;   /* no spawning of its own */
+    return &state->towers[0];
+}
+
+/* An enemy at a fixed spot; `dist` orders who is closest to the gate. */
+static void place_at(fl_state_t *state, int index, fl_enemy_kind_t kind,
+                     float x, float y, float dist)
+{
+    place_enemy(state, index, kind, dist, 1000.0f);
+    state->enemies[index].x = x;
+    state->enemies[index].y = y;
+    state->enemies[index].stun_ticks = 1000;   /* hold still */
+}
+
+static void test_the_new_towers_arrive_one_stage_at_a_time(void)
+{
+    assert(fl_new_tower(0) == FL_TOWER_NONE);
+    assert(fl_new_tower(1) == FL_TOWER_STORM);
+    assert(fl_new_tower(2) == FL_TOWER_RUNE);
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    assert(!fl_tower_available(&state, FL_TOWER_STORM));
+    state.level_stars[0] = state.level_stars[1] = 1;
+    assert(fl_state_start_level(&state, 2));
+    assert(fl_tower_available(&state, FL_TOWER_STORM));
+    assert(fl_tower_available(&state, FL_TOWER_RUNE));
+    assert(fl_ring_count(&state) == 0);
+    state.ring_spot = 0;
+    assert(fl_ring_count(&state) == 5);
+    assert(strcmp(fl_upgrade_name(FL_TOWER_EMBER, 1, 1), "MAGMA") == 0);
+}
+
+static void test_lightning_leaps_through_a_crowd(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_STORM);
+    /* A column of wolves; the one furthest along is struck first. */
+    for (int i = 0; i < 4; ++i) {
+        place_at(&state, i, FL_ENEMY_WOLF, 60.0f + 20.0f * i, 150.0f,
+                 10.0f + 10.0f * i);
+    }
+    fl_state_update(&state);
+    float loss[4];
+    for (int i = 0; i < 4; ++i) {
+        loss[i] = 1000.0f - state.enemies[i].hp;
+    }
+    /* Three struck, each leap weaker than the last; the fourth spared. */
+    assert(loss[3] > loss[2] && loss[2] > loss[1] && loss[1] > 0.0f);
+    assert(loss[0] == 0.0f);
+    int drawn = 0;
+    for (int i = 0; i < FL_MAX_ARCS; ++i) {
+        if (state.arcs[i].ttl > 0) {
+            assert(state.arcs[i].count == 4);
+            assert(state.arcs[i].kind == FL_TOWER_STORM);
+            drawn++;
+        }
+    }
+    assert(drawn == 1);
+    assert(fl_events_take(&state) & FL_EVENT_SHOT_STORM);
+}
+
+static void test_the_rune_beam_ignores_armour(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_RUNE);
+    place_at(&state, 0, FL_ENEMY_HUSK, 80.0f, 150.0f, 10.0f);
+    assert(state.enemies[0].armor > 0);
+    fl_state_update(&state);
+    assert(1000.0f - state.enemies[0].hp
+           == (float)FL_TOWER_LEVELS[FL_TOWER_RUNE][0].damage);
+}
+
+static void test_a_hex_strips_the_armour_for_every_tower(void)
+{
+    fl_state_t plain, hexed;
+    fl_state_reset(&plain, 1u);
+    force_tower(&plain, FL_TOWER_GUARD);
+    place_at(&plain, 0, FL_ENEMY_HUSK, 80.0f, 150.0f, 10.0f);
+    hexed = plain;
+    hexed.enemies[0].hex_ticks = 500;
+    for (int i = 0; i < 20; ++i) {
+        fl_state_update(&plain);
+        fl_state_update(&hexed);
+    }
+    assert(hexed.enemies[0].hp < plain.enemies[0].hp);
+
+    /* And the hex upgrade is what lays it on. */
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_tower_t *rune = force_tower(&state, FL_TOWER_RUNE);
+    rune->level = 2;
+    rune->mod_mask = 1u << 1;   /* stage 0, option 1: HEX */
+    place_at(&state, 0, FL_ENEMY_HUSK, 80.0f, 150.0f, 10.0f);
+    fl_state_update(&state);
+    assert(state.enemies[0].hex_ticks > 0);
+}
+
+static int soldiers_alive(const fl_state_t *state)
+{
+    int count = 0;
+    for (int s = 0; s < FL_MAX_SOLDIERS; ++s) {
+        count += state->soldiers[s].active && state->soldiers[s].alive;
+    }
+    return count;
+}
+
+static void test_soldiers_march_out_and_hold_the_road(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_tower_t *hall = force_tower(&state, FL_TOWER_BARRACKS);
+    /* The rally point is on the road, within the hall's reach. */
+    float rx = (float)(hall->rally_x - hall->x);
+    float ry = (float)(hall->rally_y - hall->y);
+    assert(rx * rx + ry * ry
+           <= (float)FL_TOWER_LEVELS[FL_TOWER_BARRACKS][0].range
+              * FL_TOWER_LEVELS[FL_TOWER_BARRACKS][0].range);
+    state.phase = FL_PHASE_PREP;
+    for (int i = 0; i < 90; ++i) {
+        fl_state_update(&state);
+    }
+    assert(soldiers_alive(&state) == 2);
+    const fl_soldier_t *first = &state.soldiers[0];
+    float dx = first->x - (float)hall->rally_x;
+    float dy = first->y - (float)hall->rally_y;
+    assert(dx * dx + dy * dy < 12.0f * 12.0f);
+
+    /* A wolf walking into them is stopped and fights. */
+    state.phase = FL_PHASE_WAVE;
+    place_enemy(&state, 0, FL_ENEMY_WOLF, 30.0f, 1000.0f);
+    state.enemies[0].x = first->x;
+    state.enemies[0].y = first->y;
+    float before = state.enemies[0].dist;
+    for (int i = 0; i < 40; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].dist == before);
+    assert(state.enemies[0].hp < 1000.0f);
+    assert(state.soldiers[state.enemies[0].soldier - 1].hp
+           < state.soldiers[state.enemies[0].soldier - 1].max_hp);
+}
+
+static void test_a_fallen_soldier_marches_out_again(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_BARRACKS);
+    fl_state_update(&state);
+    assert(soldiers_alive(&state) == 2);
+    state.soldiers[0].hp = 1;
+    /* The empty field cleared the wave; start it again with a wolf. */
+    state.phase = FL_PHASE_WAVE;
+    place_enemy(&state, 0, FL_ENEMY_WOLF, 30.0f, 1000.0f);
+    state.enemies[0].x = state.soldiers[0].x;
+    state.enemies[0].y = state.soldiers[0].y;
+    for (int i = 0; i < 5; ++i) {
+        fl_state_update(&state);
+    }
+    assert(!state.soldiers[0].alive);
+    state.enemies[0].alive = 0;
+    for (int i = 0; i < 310; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.soldiers[0].alive);
+    assert(state.soldiers[0].hp == state.soldiers[0].max_hp);
+}
+
+static void test_selling_a_hall_takes_its_garrison(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_BARRACKS);
+    fl_state_update(&state);
+    assert(soldiers_alive(&state) == 2);
+    assert(fl_sell_tower(&state, 0));
+    assert(soldiers_alive(&state) == 0);
+}
+
+static int zones_burning(const fl_state_t *state)
+{
+    int count = 0;
+    for (int z = 0; z < FL_MAX_ZONES; ++z) {
+        count += state->zones[z].active;
+    }
+    return count;
+}
+
+static void test_an_ember_pot_leaves_the_road_burning(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_EMBER);
+    place_at(&state, 0, FL_ENEMY_HUSK, 80.0f, 150.0f, 10.0f);
+    for (int i = 0; i < 30 && zones_burning(&state) == 0; ++i) {
+        fl_state_update(&state);
+    }
+    assert(zones_burning(&state) == 1);
+    /* The pot itself does no harm; the fire does, armour or not. */
+    float landed = state.enemies[0].hp;
+    for (int i = 0; i < 40; ++i) {
+        fl_state_update(&state);
+    }
+    float burned = landed - state.enemies[0].hp;
+    assert(burned >= 3.0f * (float)FL_TOWER_LEVELS[FL_TOWER_EMBER][0].damage);
+    /* It burns out once its time is up; the tower is sold so no new pot
+     * keeps it alight. */
+    assert(fl_sell_tower(&state, 0));
+    for (int i = 0; i < 200; ++i) {
+        fl_state_update(&state);
+    }
+    assert(zones_burning(&state) == 0);
+}
+
+/* --- the newer enemies ----------------------------------------------- */
+
+static int count_alive(const fl_state_t *state, fl_enemy_kind_t kind)
+{
+    int count = 0;
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        count += state->enemies[i].alive && state->enemies[i].kind == kind;
+    }
+    return count;
+}
+
+static void test_a_crow_flies_over_the_siege_and_the_soldiers(void)
+{
+    /* The catapult lobs at the ground: a bird is out of its reach. */
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_SIEGE);
+    place_at(&state, 0, FL_ENEMY_CROW, 80.0f, 150.0f, 10.0f);
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].hp == 1000.0f);
+
+    /* An archer shoots it down well enough. */
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_GUARD);
+    place_at(&state, 0, FL_ENEMY_CROW, 80.0f, 150.0f, 10.0f);
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].hp < 1000.0f);
+
+    /* And no soldier can hold it. */
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_BARRACKS);
+    fl_state_update(&state);
+    state.phase = FL_PHASE_WAVE;
+    place_enemy(&state, 0, FL_ENEMY_CROW, 30.0f, 1000.0f);
+    state.enemies[0].x = state.soldiers[0].x;
+    state.enemies[0].y = state.soldiers[0].y;
+    for (int i = 0; i < 20; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].dist > 30.0f);
+    assert(state.enemies[0].soldier == 0);
+    assert(state.enemies[0].hp == 1000.0f);
+}
+
+static void test_a_golem_cracks_at_half_health(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_RUNE);
+    place_at(&state, 0, FL_ENEMY_GOLEM, 80.0f, 150.0f, 10.0f);
+    state.enemies[0].hp = 501.0f;
+    assert(state.enemies[0].armor == FL_ENEMY_STATS[FL_ENEMY_GOLEM].armor);
+    fl_state_update(&state);
+    assert(state.enemies[0].stage == 1);
+    assert(state.enemies[0].armor == 0);
+    assert(fl_events_take(&state) & FL_EVENT_CRACK);
+}
+
+static void test_a_slime_bursts_into_slimelets_the_blast_spares(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_SIEGE);
+    place_at(&state, 0, FL_ENEMY_SLIME, 80.0f, 150.0f, 40.0f);
+    state.enemies[0].hp = 1.0f;
+    uint16_t gold = state.gold;
+    for (int i = 0; i < 60 && count_alive(&state, FL_ENEMY_SLIME); ++i) {
+        fl_state_update(&state);
+    }
+    assert(count_alive(&state, FL_ENEMY_SLIME) == 0);
+    assert(count_alive(&state, FL_ENEMY_SLIMELET) == 3);
+    assert(state.gold == gold + FL_ENEMY_STATS[FL_ENEMY_SLIME].bounty);
+    assert(fl_events_take(&state) & FL_EVENT_SPLIT);
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        const fl_enemy_t *child = &state.enemies[i];
+        if (child->alive && child->kind == FL_ENEMY_SLIMELET) {
+            assert(child->hp == child->max_hp);
+        }
+    }
+}
+
+static void test_a_burrower_dives_out_of_reach_and_speeds_up(void)
+{
+    /* Under the road no tower can see it. */
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_GUARD);
+    place_at(&state, 0, FL_ENEMY_BURROWER, 80.0f, 150.0f, 10.0f);
+    fl_state_update(&state);   /* phase_ticks starts at 0: it dives */
+    assert(state.enemies[0].burrowed);
+    assert(fl_events_take(&state) & FL_EVENT_BURROW);
+    /* The bolt already loosed flies on to where it was and misses. */
+    float hp = state.enemies[0].hp;
+    for (int i = 0; i < 30; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].hp == hp);
+    assert(hp == 1000.0f);
+
+    /* And it tunnels faster than it walks. */
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_index = FL_BATCH_MAX;
+    place_enemy(&state, 0, FL_ENEMY_BURROWER, 40.0f, 1000.0f);
+    fl_state_update(&state);
+    assert(state.enemies[0].burrowed);
+    float start = state.enemies[0].dist;
+    for (int i = 0; i < 10; ++i) {
+        fl_state_update(&state);
+    }
+    float under = state.enemies[0].dist - start;
+    state.enemies[0].phase_ticks = 0;
+    fl_state_update(&state);
+    assert(!state.enemies[0].burrowed);
+    start = state.enemies[0].dist;
+    for (int i = 0; i < 10; ++i) {
+        fl_state_update(&state);
+    }
+    float above = state.enemies[0].dist - start;
+    assert(under > above * 1.5f);
+}
+
+static void test_the_wyrm_surfaces_with_a_brood(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_index = FL_BATCH_MAX;
+    place_enemy(&state, 0, FL_ENEMY_WYRM, 200.0f, 2600.0f);
+    state.enemies[0].burrowed = 1;
+    fl_state_update(&state);
+    assert(!state.enemies[0].burrowed);
+    assert(count_alive(&state, FL_ENEMY_SKITTER) == 3);
+    assert(fl_events_take(&state) & FL_EVENT_BOSS);
+    for (int i = 0; i < FL_MAX_ENEMIES; ++i) {
+        const fl_enemy_t *skitter = &state.enemies[i];
+        if (skitter->alive && skitter->kind == FL_ENEMY_SKITTER) {
+            assert(skitter->dist < state.enemies[0].dist);
+        }
+    }
+}
+
+static void test_the_king_freezes_the_nearest_tower(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    fl_tower_t *tower = force_tower(&state, FL_TOWER_GUARD);
+    place_at(&state, 0, FL_ENEMY_KING, 80.0f, 150.0f, 10.0f);
+    state.enemies[0].phase_ticks = 10000;   /* not yet */
+    place_at(&state, 1, FL_ENEMY_WOLF, 80.0f, 140.0f, 20.0f);
+    state.enemies[0].phase_ticks = 0;
+    fl_state_update(&state);
+    assert(tower->frozen_ticks > 0);
+    assert(fl_events_take(&state) & FL_EVENT_FREEZE);
+    bool beam = false;
+    for (int i = 0; i < FL_MAX_ARCS; ++i) {
+        beam |= state.arcs[i].ttl > 0 && state.arcs[i].kind == FL_ARC_FREEZE;
+    }
+    assert(beam);
+    /* Encased, it holds its fire; thawed, it shoots again. The bolt it
+     * loosed on the first tick is let land before counting. */
+    state.enemies[0].phase_ticks = 10000;
+    for (int i = 0; i < 15; ++i) {
+        fl_state_update(&state);
+    }
+    float hp = state.enemies[1].hp;
+    for (int i = 0; i < 90; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[1].hp == hp);
+    for (int i = 0; i < 60; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[1].hp < hp);
+}
+
+static void test_the_king_wards_itself_at_each_third(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    force_tower(&state, FL_TOWER_RUNE);
+    place_at(&state, 0, FL_ENEMY_KING, 80.0f, 150.0f, 10.0f);
+    state.enemies[0].phase_ticks = 10000;
+    state.enemies[0].max_hp = 3000.0f;
+    state.enemies[0].hp = 2001.0f;
+    fl_state_update(&state);
+    /* The blow stops at the line, the ward goes up, the wolves come. */
+    assert(state.enemies[0].hp == 2000.0f);
+    assert(state.enemies[0].stage == 1);
+    assert(state.enemies[0].ward_ticks > 0);
+    assert(count_alive(&state, FL_ENEMY_WOLF) == 3);
+    for (int i = 0; i < 40; ++i) {
+        fl_state_update(&state);
+    }
+    assert(state.enemies[0].hp == 2000.0f);
+}
+
+static void test_a_boss_at_the_gate_costs_ten_lives(void)
+{
+    fl_state_t state;
+    fl_state_reset(&state, 1u);
+    state.phase = FL_PHASE_WAVE;
+    state.batch_index = FL_BATCH_MAX;
+    place_enemy(&state, 0, FL_ENEMY_WYRM, 100000.0f, 2600.0f);
+    state.enemies[0].phase_ticks = 10000;
+    uint8_t lives = state.lives;
+    fl_state_update(&state);
+    assert(lives - state.lives == 10);
+}
+
 int main(void)
 {
+    test_only_the_first_level_is_open_at_first();
+    test_winning_a_level_opens_the_next();
+    test_the_next_button_starts_the_next_level();
+    test_a_lost_run_offers_retry_and_map_only();
+    test_the_map_picks_and_starts_a_level();
+    test_the_pause_panel_resumes_and_leaves();
+    test_every_level_walks_from_spawn_to_the_gate();
     test_reset_starts_in_prep();
     test_build_tower_costs_gold_and_occupies_spot();
     test_build_tower_rejects_insufficient_gold();
@@ -555,8 +1279,28 @@ int main(void)
     test_score_counts_kills_and_cleared_waves();
     test_a_leak_is_counted_and_costs_the_flawless_bonus();
     test_state_hash_is_stable_for_the_same_seed();
-    test_pointer_selects_a_tower_card();
-    test_pointer_builds_on_a_spot();
+    test_a_pad_opens_the_ring_with_the_levels_towers();
+    test_the_first_tap_picks_and_the_second_builds();
+    test_a_tap_off_the_ring_closes_it();
+    test_short_of_gold_the_ring_stays_open();
+    test_a_free_post_opens_the_hero_ring();
+    test_every_medallion_stays_on_the_glass();
+    test_the_new_towers_arrive_one_stage_at_a_time();
+    test_lightning_leaps_through_a_crowd();
+    test_the_rune_beam_ignores_armour();
+    test_a_hex_strips_the_armour_for_every_tower();
+    test_soldiers_march_out_and_hold_the_road();
+    test_a_fallen_soldier_marches_out_again();
+    test_selling_a_hall_takes_its_garrison();
+    test_an_ember_pot_leaves_the_road_burning();
+    test_a_crow_flies_over_the_siege_and_the_soldiers();
+    test_a_golem_cracks_at_half_health();
+    test_a_slime_bursts_into_slimelets_the_blast_spares();
+    test_a_burrower_dives_out_of_reach_and_speeds_up();
+    test_the_wyrm_surfaces_with_a_brood();
+    test_the_king_freezes_the_nearest_tower();
+    test_the_king_wards_itself_at_each_third();
+    test_a_boss_at_the_gate_costs_ten_lives();
     test_building_raises_an_event();
     test_building_without_the_gold_is_denied();
     test_upgrading_and_selling_raise_events();

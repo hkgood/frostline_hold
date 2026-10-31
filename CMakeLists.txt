@@ -1,7 +1,21 @@
 cmake_minimum_required(VERSION 3.22)
-set(MOSAICO_UTILS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../submodule/esp-mosaico-utils")
-set(MOSAICO_BSP_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../submodule/esp-mosaico-bsp")
-set(RAYLIB_LITE_ENGINE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../submodule/raylib-lite-engine")
+# The ESP-Mosaic checkout that provides the engine, BSP and tools. The project
+# may live inside it (projects/<name>) or beside it with a symlink pointing
+# in; CMake sees the real path, so try each layout in turn.
+if(DEFINED ENV{MOSAICO_ROOT})
+    set(MOSAICO_ROOT "$ENV{MOSAICO_ROOT}")
+elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../submodule/esp-mosaico-utils")
+    set(MOSAICO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../ESP-Mosaic/submodule/esp-mosaico-utils")
+    set(MOSAICO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../ESP-Mosaic")
+else()
+    message(FATAL_ERROR "ESP-Mosaic not found: set the MOSAICO_ROOT environment variable")
+endif()
+# main/idf_component.yml reads it to find the engine.
+set(ENV{MOSAICO_ROOT} "${MOSAICO_ROOT}")
+set(MOSAICO_UTILS_ROOT "${MOSAICO_ROOT}/submodule/esp-mosaico-utils")
+set(MOSAICO_BSP_ROOT "${MOSAICO_ROOT}/submodule/esp-mosaico-bsp")
+set(RAYLIB_LITE_ENGINE_ROOT "${MOSAICO_ROOT}/submodule/raylib-lite-engine")
 set(RAYLIB_LITE_BSP_DIR "${MOSAICO_BSP_ROOT}")
 set(RAYLIB_LITE_UTILS_DIR "${MOSAICO_UTILS_ROOT}")
 set(RAYLIB_LITE_GAME_DIR "${CMAKE_CURRENT_LIST_DIR}")

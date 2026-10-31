@@ -1,9 +1,9 @@
 {
   "image": "props_titan_atlas_source.png",
-  "columns": 4,
-  "rows": 1,
-  "output_cell": 68,
-  "output_columns": 4,
+  "columns": 6,
+  "rows": 4,
+  "output_cell": 84,
+  "output_columns": 6,
   "alpha_mode": "binary",
   "frames": [
     {
@@ -17,6 +17,66 @@
     },
     {
       "name": "enemy_titan_3"
+    },
+    {
+      "name": "enemy_titan_4"
+    },
+    {
+      "name": "enemy_titan_5"
+    },
+    {
+      "name": "enemy_wyrm_0"
+    },
+    {
+      "name": "enemy_wyrm_1"
+    },
+    {
+      "name": "enemy_wyrm_2"
+    },
+    {
+      "name": "enemy_wyrm_3"
+    },
+    {
+      "name": "enemy_wyrm_4"
+    },
+    {
+      "name": "enemy_wyrm_5"
+    },
+    {
+      "name": "enemy_wyrm_under_0"
+    },
+    {
+      "name": "enemy_wyrm_under_1"
+    },
+    {
+      "name": "enemy_wyrm_under_2"
+    },
+    {
+      "name": "enemy_wyrm_under_3"
+    },
+    {
+      "name": "enemy_wyrm_under_4"
+    },
+    {
+      "name": "enemy_wyrm_under_5"
+    },
+    {
+      "name": "enemy_king_0"
+    },
+    {
+      "name": "enemy_king_1"
+    },
+    {
+      "name": "enemy_king_2"
+    },
+    {
+      "name": "enemy_king_3"
+    },
+    {
+      "name": "enemy_king_4"
+    },
+    {
+      "name": "enemy_king_5"
     }
   ],
   "animations": [
@@ -26,9 +86,47 @@
         "enemy_titan_0",
         "enemy_titan_1",
         "enemy_titan_2",
-        "enemy_titan_3"
+        "enemy_titan_3",
+        "enemy_titan_4",
+        "enemy_titan_5"
       ],
-      "frame_ticks": 10
+      "frame_ticks": 8
+    },
+    {
+      "name": "wyrm_walk",
+      "frames": [
+        "enemy_wyrm_0",
+        "enemy_wyrm_1",
+        "enemy_wyrm_2",
+        "enemy_wyrm_3",
+        "enemy_wyrm_4",
+        "enemy_wyrm_5"
+      ],
+      "frame_ticks": 8
+    },
+    {
+      "name": "wyrm_under_walk",
+      "frames": [
+        "enemy_wyrm_under_0",
+        "enemy_wyrm_under_1",
+        "enemy_wyrm_under_2",
+        "enemy_wyrm_under_3",
+        "enemy_wyrm_under_4",
+        "enemy_wyrm_under_5"
+      ],
+      "frame_ticks": 8
+    },
+    {
+      "name": "king_walk",
+      "frames": [
+        "enemy_king_0",
+        "enemy_king_1",
+        "enemy_king_2",
+        "enemy_king_3",
+        "enemy_king_4",
+        "enemy_king_5"
+      ],
+      "frame_ticks": 8
     }
   ]
 }

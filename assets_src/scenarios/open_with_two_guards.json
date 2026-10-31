@@ -1,8 +1,11 @@
 {
   "events": [
-    {"frame": 2, "type": "tap", "x": 50, "y": 440},
-    {"frame": 10, "type": "tap", "x": 58, "y": 108},
-    {"frame": 20, "type": "tap", "x": 50, "y": 440},
-    {"frame": 30, "type": "tap", "x": 50, "y": 192}
+    {"frame": 2, "type": "tap", "x": 360, "y": 400},
+    {"frame": 12, "type": "tap", "x": 58, "y": 108},
+    {"frame": 15, "type": "tap", "x": 76, "y": 66},
+    {"frame": 18, "type": "tap", "x": 76, "y": 66},
+    {"frame": 30, "type": "tap", "x": 50, "y": 192},
+    {"frame": 33, "type": "tap", "x": 76, "y": 142},
+    {"frame": 36, "type": "tap", "x": 76, "y": 142}
   ]
 }

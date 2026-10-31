@@ -2,80 +2,102 @@
   "files": [
     {
       "alpha_mode": "opaque",
-      "bytes": 460836,
+      "bytes": 1843284,
       "file": "terrain.atlas",
       "format": "msa1",
-      "frames": 1,
-      "height": 480,
+      "frames": 4,
+      "height": 960,
+      "type": "atlas",
+      "variants": 0,
+      "width": 960
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 346068,
+      "file": "units.atlas",
+      "format": "msa1",
+      "frames": 28,
+      "height": 240,
       "type": "atlas",
       "variants": 0,
       "width": 480
     },
     {
       "alpha_mode": "binary",
-      "bytes": 130004,
-      "file": "units.atlas",
-      "format": "msa1",
-      "frames": 12,
-      "height": 104,
-      "type": "atlas",
-      "variants": 0,
-      "width": 416
-    },
-    {
-      "alpha_mode": "binary",
-      "bytes": 124852,
+      "bytes": 465876,
       "file": "props.atlas",
       "format": "msa1",
-      "frames": 26,
-      "height": 144,
+      "frames": 76,
+      "height": 440,
       "type": "atlas",
       "variants": 0,
-      "width": 288
+      "width": 352
     },
     {
       "alpha_mode": "binary",
-      "bytes": 19460,
+      "bytes": 29092,
       "file": "fx.atlas",
       "format": "msa1",
-      "frames": 15,
-      "height": 40,
+      "frames": 17,
+      "height": 60,
       "type": "atlas",
       "variants": 0,
       "width": 160
     },
     {
       "alpha_mode": "binary",
-      "bytes": 23316,
+      "bytes": 195092,
       "file": "props_husk.atlas",
       "format": "msa1",
-      "frames": 4,
-      "height": 44,
+      "frames": 24,
+      "height": 208,
       "type": "atlas",
       "variants": 0,
-      "width": 176
+      "width": 312
     },
     {
       "alpha_mode": "binary",
-      "bytes": 55572,
+      "bytes": 508436,
       "file": "props_titan.atlas",
       "format": "msa1",
-      "frames": 4,
-      "height": 68,
+      "frames": 24,
+      "height": 336,
       "type": "atlas",
       "variants": 0,
-      "width": 272
+      "width": 504
     },
     {
       "alpha_mode": "binary",
-      "bytes": 23316,
+      "bytes": 32532,
       "file": "heroes.atlas",
       "format": "msa1",
       "frames": 4,
-      "height": 44,
+      "height": 52,
       "type": "atlas",
       "variants": 0,
-      "width": 176
+      "width": 208
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 49396,
+      "file": "icons.atlas",
+      "format": "msa1",
+      "frames": 14,
+      "height": 64,
+      "type": "atlas",
+      "variants": 0,
+      "width": 256
+    },
+    {
+      "alpha_mode": "binary",
+      "bytes": 49332,
+      "file": "castle_fx.atlas",
+      "format": "msa1",
+      "frames": 10,
+      "height": 64,
+      "type": "atlas",
+      "variants": 0,
+      "width": 256
     },
     {
       "bits": 16,
@@ -143,11 +165,83 @@
     },
     {
       "bits": 16,
+      "bytes": 16340,
+      "file": "shot_storm.sound",
+      "rate": 24000,
+      "samples": 8160,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 15380,
+      "file": "shot_rune.sound",
+      "rate": 24000,
+      "samples": 7680,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 17300,
+      "file": "shot_ember.sound",
+      "rate": 24000,
+      "samples": 8640,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 10580,
+      "file": "clash.sound",
+      "rate": 24000,
+      "samples": 5280,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
       "bytes": 26420,
       "file": "impact.sound",
       "rate": 24000,
       "samples": 13200,
       "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 20180,
+      "file": "crack.sound",
+      "rate": 24000,
+      "samples": 10080,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 17300,
+      "file": "split.sound",
+      "rate": 24000,
+      "samples": 8640,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 19220,
+      "file": "burrow.sound",
+      "rate": 24000,
+      "samples": 9600,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 16,
+      "bytes": 28820,
+      "file": "freeze.sound",
+      "rate": 24000,
+      "samples": 14400,
+      "type": "audio_pcm16"
+    },
+    {
+      "bits": 4,
+      "bytes": 15624,
+      "file": "boss.sound",
+      "rate": 24000,
+      "samples": 31200,
+      "type": "audio_ima_adpcm"
     },
     {
       "bits": 16,
@@ -230,7 +324,7 @@
       "type": "audio_ima_adpcm"
     }
   ],
-  "limit_bytes": 4194304,
+  "limit_bytes": 8388608,
   "schema": "mosaico-assets-report/v1",
-  "total_bytes": 1461121
+  "total_bytes": 4303617
 }

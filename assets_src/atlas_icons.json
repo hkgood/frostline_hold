@@ -1,0 +1,53 @@
+{
+  "image": "icons_atlas_source.png",
+  "columns": 8,
+  "rows": 2,
+  "output_cell": 32,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "icon_heart"
+    },
+    {
+      "name": "icon_coin"
+    },
+    {
+      "name": "icon_score"
+    },
+    {
+      "name": "icon_star"
+    },
+    {
+      "name": "icon_nova"
+    },
+    {
+      "name": "icon_flag"
+    },
+    {
+      "name": "card_guard"
+    },
+    {
+      "name": "card_frost"
+    },
+    {
+      "name": "card_siege"
+    },
+    {
+      "name": "card_hero"
+    },
+    {
+      "name": "card_storm"
+    },
+    {
+      "name": "card_rune"
+    },
+    {
+      "name": "card_barracks"
+    },
+    {
+      "name": "card_ember"
+    }
+  ],
+  "animations": []
+}

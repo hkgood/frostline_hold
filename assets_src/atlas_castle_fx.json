@@ -1,0 +1,64 @@
+{
+  "image": "castle_fx_atlas_source.png",
+  "columns": 8,
+  "rows": 2,
+  "output_cell": 32,
+  "output_columns": 8,
+  "alpha_mode": "binary",
+  "frames": [
+    {
+      "name": "castle_flag_0"
+    },
+    {
+      "name": "castle_flag_1"
+    },
+    {
+      "name": "castle_flag_2"
+    },
+    {
+      "name": "castle_flag_3"
+    },
+    {
+      "name": "castle_flag_4"
+    },
+    {
+      "name": "castle_flag_5"
+    },
+    {
+      "name": "castle_flame_0"
+    },
+    {
+      "name": "castle_flame_1"
+    },
+    {
+      "name": "castle_flame_2"
+    },
+    {
+      "name": "castle_flame_3"
+    }
+  ],
+  "animations": [
+    {
+      "name": "castle_flag",
+      "frames": [
+        "castle_flag_0",
+        "castle_flag_1",
+        "castle_flag_2",
+        "castle_flag_3",
+        "castle_flag_4",
+        "castle_flag_5"
+      ],
+      "frame_ticks": 5
+    },
+    {
+      "name": "castle_flame",
+      "frames": [
+        "castle_flame_0",
+        "castle_flame_1",
+        "castle_flame_2",
+        "castle_flame_3"
+      ],
+      "frame_ticks": 3
+    }
+  ]
+}

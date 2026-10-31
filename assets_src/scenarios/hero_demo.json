@@ -1,9 +1,11 @@
 {
   "events": [
-    {"frame": 2, "type": "tap", "x": 360, "y": 446},
-    {"frame": 6, "type": "tap", "x": 56, "y": 232},
-    {"frame": 700, "type": "tap", "x": 450, "y": 22},
-    {"frame": 710, "type": "tap", "x": 450, "y": 22},
-    {"frame": 800, "type": "tap", "x": 20, "y": 22}
+    {"frame": 2, "type": "tap", "x": 360, "y": 400},
+    {"frame": 12, "type": "tap", "x": 56, "y": 232},
+    {"frame": 15, "type": "tap", "x": 76, "y": 182},
+    {"frame": 18, "type": "tap", "x": 76, "y": 182},
+    {"frame": 710, "type": "tap", "x": 422, "y": 22},
+    {"frame": 720, "type": "tap", "x": 422, "y": 22},
+    {"frame": 810, "type": "tap", "x": 58, "y": 22}
   ]
 }

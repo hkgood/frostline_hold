@@ -1,6 +1,7 @@
 import unittest
 
-from artgen.canvas import BLACK, UNSET, WHITE, BAYER8, Canvas, dither_rect
+from artgen.canvas import (BLACK, INK_RGB, PAPER_RGB, UNSET, WHITE, BAYER8,
+                           Canvas, dither_rect)
 
 
 class TestCanvas(unittest.TestCase):
@@ -61,7 +62,7 @@ class TestCanvas(unittest.TestCase):
         img = c.to_image()
         self.assertEqual(
             sorted(set(img.getdata())),
-            [(0, 0, 0, 0), (0, 0, 0, 255), (255, 255, 255, 255)],
+            sorted([(0, 0, 0, 0), INK_RGB + (255,), PAPER_RGB + (255,)]),
         )
 
     def test_blit_keeps_transparent_source_pixels_out(self):

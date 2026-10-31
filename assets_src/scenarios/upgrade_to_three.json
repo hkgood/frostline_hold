@@ -1,11 +1,13 @@
 {
   "events": [
-    {"frame": 2, "type": "tap", "x": 56, "y": 446},
-    {"frame": 6, "type": "tap", "x": 58, "y": 108},
-    {"frame": 700, "type": "tap", "x": 450, "y": 22},
-    {"frame": 710, "type": "tap", "x": 450, "y": 22},
-    {"frame": 1100, "type": "tap", "x": 58, "y": 108},
-    {"frame": 1110, "type": "tap", "x": 100, "y": 440},
-    {"frame": 1700, "type": "tap", "x": 100, "y": 440}
+    {"frame": 2, "type": "tap", "x": 360, "y": 400},
+    {"frame": 12, "type": "tap", "x": 58, "y": 108},
+    {"frame": 15, "type": "tap", "x": 76, "y": 66},
+    {"frame": 18, "type": "tap", "x": 76, "y": 66},
+    {"frame": 710, "type": "tap", "x": 422, "y": 22},
+    {"frame": 720, "type": "tap", "x": 422, "y": 22},
+    {"frame": 1110, "type": "tap", "x": 58, "y": 108},
+    {"frame": 1120, "type": "tap", "x": 100, "y": 440},
+    {"frame": 1710, "type": "tap", "x": 100, "y": 440}
   ]
 }

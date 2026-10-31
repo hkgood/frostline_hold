@@ -10,6 +10,11 @@
 extern "C" {
 #endif
 
+/* The panel's only two tones: warm ink and paper. The sprite sheets are baked
+ * in the same pair, so every pixel on screen is one or the other. */
+#define FL_INK ((Color){0x31, 0x2F, 0x28, 255})
+#define FL_PAPER ((Color){0xB1, 0xAF, 0xA8, 255})
+
 /** Load every atlas. Safe to call once per run. */
 void frostline_view_init(void);
 /** Release the atlases. */

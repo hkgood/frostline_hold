@@ -18,9 +18,12 @@
 static const char *const SFX_ASSETS[FL_SFX_COUNT] = {
     "ui_tap.sound",  "ui_deny.sound",  "build.sound",   "upgrade.sound",
     "sell.sound",    "shot_guard.sound", "shot_frost.sound", "shot_siege.sound",
+    "shot_storm.sound", "shot_rune.sound", "shot_ember.sound", "clash.sound",
     "impact.sound",  "kill.sound",     "leak.sound",    "wave_start.sound",
     "wave_clear.sound", "hero_hit.sound", "hero_down.sound", "nova.sound",
     "win.sound",     "lose.sound",
+    "crack.sound",   "split.sound",    "burrow.sound",  "freeze.sound",
+    "boss.sound",
 };
 
 #define MUSIC_ASSET "music_battle.sound"
@@ -32,9 +35,12 @@ static const char *const SFX_ASSETS[FL_SFX_COUNT] = {
 static const char *const SFX_HOST_NAMES[FL_SFX_COUNT] = {
     "ui_tap",  "ui_deny",  "build",      "upgrade",
     "sell",    "shot_guard", "shot_frost", "shot_siege",
+    "shot_storm", "shot_rune", "shot_ember", "clash",
     "impact",  "kill",     "leak",       "wave_start",
     "wave_clear", "hero_hit", "hero_down", "nova",
     "win",     "lose",
+    "crack",   "split",    "burrow",     "freeze",
+    "boss",
 };
 
 /* Which event makes which sound, and how loud the motor gets. The first
@@ -56,18 +62,27 @@ typedef struct {
 static const fl_cue_rule_t RULES[] = {
     {FL_EVENT_WON,        FL_SFX_WIN,         0,   60, 60,  100, 140, 90},
     {FL_EVENT_LOST,       FL_SFX_LOSE,        0,   90, 120,  40, 160, 70},
+    {FL_EVENT_BOSS,       FL_SFX_BOSS,        30, 100, 90,  80, 120, 60},
     {FL_EVENT_NOVA,       FL_SFX_NOVA,        12,  95, 50,  70,  45, 30},
+    {FL_EVENT_FREEZE,     FL_SFX_FREEZE,      12,  70, 40,   0,   0,  0},
     {FL_EVENT_LEAK,       FL_SFX_LEAK,        10,  85, 60,  95,  70, 40},
     {FL_EVENT_WAVE_START, FL_SFX_WAVE_START,  10,  45, 70,   0,   0,  0},
     {FL_EVENT_WAVE_CLEAR, FL_SFX_WAVE_CLEAR,  10,  40, 40,   0,   0,  0},
     {FL_EVENT_HERO_DOWN,  FL_SFX_HERO_DOWN,   12,  65, 40,  90,  60, 30},
     {FL_EVENT_HERO_HIT,   FL_SFX_HERO_HIT,    8,   35, 25,   0,   0,  0},
+    {FL_EVENT_CRACK,      FL_SFX_CRACK,       8,   60, 30,   0,   0,  0},
+    {FL_EVENT_SPLIT,      FL_SFX_SPLIT,       8,   35, 25,   0,   0,  0},
     {FL_EVENT_IMPACT,     FL_SFX_IMPACT,      8,   55, 30,   0,   0,  0},
     {FL_EVENT_KILLED,     FL_SFX_KILL,        5,    0,  0,   0,   0,  0},
+    {FL_EVENT_SHOT_STORM, FL_SFX_SHOT_STORM,  6,   30, 20,   0,   0,  0},
     {FL_EVENT_SHOT_SIEGE, FL_SFX_SHOT_SIEGE,  5,   20, 18,   0,   0,  0},
+    {FL_EVENT_SHOT_RUNE,  FL_SFX_SHOT_RUNE,   6,   18, 16,   0,   0,  0},
+    {FL_EVENT_SHOT_EMBER, FL_SFX_SHOT_EMBER,  6,   20, 18,   0,   0,  0},
     {FL_EVENT_SHOT_FROST, FL_SFX_SHOT_FROST,  5,   18, 16,   0,   0,  0},
     {FL_EVENT_SHOT_GUARD, FL_SFX_SHOT_GUARD,  5,   20, 18,   0,   0,  0},
     {FL_EVENT_HERO_SHOT,  FL_SFX_SHOT_FROST,  6,    0,  0,   0,   0,  0},
+    {FL_EVENT_CLASH,      FL_SFX_CLASH,       7,    0,  0,   0,   0,  0},
+    {FL_EVENT_BURROW,     FL_SFX_BURROW,      10,   0,  0,   0,   0,  0},
     {FL_EVENT_UPGRADED,   FL_SFX_UPGRADE,     6,   45, 30,  75,  40, 25},
     {FL_EVENT_BUILT,      FL_SFX_BUILD,       6,   60, 40,   0,   0,  0},
     {FL_EVENT_HERO_PLACED, FL_SFX_BUILD,      6,   60, 40,   0,   0,  0},
