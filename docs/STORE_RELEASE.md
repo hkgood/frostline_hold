@@ -178,12 +178,14 @@ platform/pc/scripts/package_android.sh             # → dist/android/*.aab
 
 ### App Store 关键词（≤100，逗号分隔）
 
+名称和副标题里的词已自动计入搜索，这里不再重复。
+
 ```text
-tower defense,td,strategy,pixel,retro,winter,castle,fantasy,offline,engraving,hero,boss,ice
+tower defense,strategy,pixel,retro,castle,fantasy,offline,engraving,hero,boss,ice,snow,monster
 ```
 
 ```text
-塔防,策略,像素,复古,冬天,冰雪,城堡,奇幻,单机,离线,版画,英雄,首领,守城
+塔防,策略,像素,复古,冰雪,城堡,奇幻,单机,离线,英雄,首领,守城,防御,怪物,冬天,版画
 ```
 
 ### Play 简短说明（≤80）
@@ -196,7 +198,9 @@ Build towers, call in a hero, hold a frozen fortress. A two-tone winter TD.
 建塔、升级、召唤英雄，守住冰原要塞。双色版画风格的凛冬塔防。
 ```
 
-### 完整描述（两家商店通用，≤4000）
+### 完整描述（≤4000）
+
+App Store 版把"Played with a single tap or click"换成"Played with the mouse or trackpad"（中文"用鼠标或触控板即可游玩"）：App Store 的文案不能提及其他平台。
 
 ```text
 Hold a frozen fortress in a two-tone engraving style. Build towers, upgrade them, call in a hero, and stop wave after wave of monsters before they reach the gate.
