@@ -111,6 +111,9 @@ if [[ "$FLAVOUR" == mas ]]; then
     /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $APP_ID" \
         -c "Add :com.apple.developer.team-identifier string $TEAM_ID" "$ENTITLEMENTS"
     cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
+    # The store refuses any file carrying an extended attribute such as the
+    # quarantine flag a downloaded profile comes with.
+    xattr -cr "$APP"
     codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" \
         --sign "$IDENTITY" "$APP"
     codesign --verify --strict --deep --verbose=2 "$APP"
