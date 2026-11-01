@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The game's ink as it shows on screen (RGB565), behind everything. -->
+    <color name="ink">#312C29</color>
+    <!-- The icon plate's ink (artgen/canvas.py INK_RGB), under its dots. -->
+    <color name="ic_launcher_background">#312F28</color>
+</resources>

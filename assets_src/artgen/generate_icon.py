@@ -1,5 +1,5 @@
 """The app icon of the PC builds: the macOS .icns, the Windows .ico and the
-store pictures.
+store pictures; and the Android launcher icon's layers.
 
 Two drawings, one look. From 128 px up the icon is an AI plate
 (ai/icon_source.jpg: a snow-capped watchtower under the stars) dithered to
@@ -8,9 +8,16 @@ as the game does on screen, framed by the double rule of the game's panels.
 Below that a dithered plate is only noise, so 16, 24 and 32 px are drawn by
 hand, pixel by pixel; 48 and 64 px double the 24 and 32.
 
+macOS 26 draws its icons from an Icon Composer file instead (.icon, built into
+Assets.car by actool): the same plate as one layer, which the system masks,
+scales and shades itself. The .icns stays for older systems.
+
     python artgen/generate_icon.py      # from assets_src/; needs macOS for iconutil
 """
 import io
+import json
+import math
+import shutil
 import struct
 import subprocess
 import sys
@@ -27,8 +34,12 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "assets_src" / "ai" / "icon_source.jpg"
 PC = ROOT / "platform" / "pc"
 ICNS = PC / "mac" / "FrostlineHold.icns"
+ICON = PC / "mac" / "FrostlineHold.icon"
 ICO = PC / "windows" / "frostline.ico"
 STORE = PC / "icon"
+ANDROID_RES = ROOT / "platform" / "android" / "app" / "src" / "main" / "res"
+# Pixels per dp of each launcher density.
+ANDROID_DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
 INK = INK_RGB + (255,)
 PAPER = PAPER_RGB + (255,)
@@ -47,6 +58,12 @@ MAC_BODY = 824 / 1024
 CORNER = 0.224
 # The frame: two rules in from the edge, in dots, like the game's panels.
 RULES = (5, 8)
+# macOS 26 masks an Icon Composer layer to the whole canvas, but its corners
+# are not circular: each is a superellipse of this power, this share of the
+# side long. The frame follows them.
+SQUIRCLE_CORNER = 0.342
+SQUIRCLE_POWER = 2.8
+ICON_CANVAS = 1024
 
 # Stars in the sky, in dots: (x, y, arm length). The AI picture's own faint
 # stars are cleared: at this grid they dither to stray dots.
@@ -151,8 +168,44 @@ def rounded_mask(size, inset, radius):
 
 # ----------------------------------------------------------- large plate
 
-def dithered_plate():
-    """The AI picture as ink and paper dots, GRID across, framed."""
+def rounded_rules():
+    """The frame's rules on the rounded square of the .icns and the .ico."""
+    rules = Image.new("L", (GRID, GRID), 0)
+    draw = ImageDraw.Draw(rules)
+    radius = round(GRID * CORNER)
+    for inset in RULES:
+        draw.rounded_rectangle((inset, inset, GRID - 1 - inset, GRID - 1 - inset),
+                               radius=radius - inset, outline=255, width=1)
+    return rules
+
+
+def squircle_outline(low, high, corner, steps=64):
+    """The points round a square from `low` to `high` on both axes, its
+    corners superelliptic quarters `corner` long."""
+    centres = ((high - corner, high - corner), (low + corner, high - corner),
+               (low + corner, low + corner), (high - corner, low + corner))
+    points = []
+    for quarter, (cx, cy) in enumerate(centres):
+        for step in range(steps + 1):
+            angle = (quarter + step / steps) * math.pi / 2
+            c, s = math.cos(angle), math.sin(angle)
+            points.append((cx + corner * math.copysign(abs(c) ** (2 / SQUIRCLE_POWER), c),
+                           cy + corner * math.copysign(abs(s) ** (2 / SQUIRCLE_POWER), s)))
+    return points
+
+
+def squircle_rules():
+    """The frame's rules on the shape macOS 26 masks the icon to."""
+    rules = Image.new("L", (GRID, GRID), 0)
+    draw = ImageDraw.Draw(rules)
+    for inset in RULES:
+        outline = squircle_outline(inset, GRID - 1 - inset, GRID * SQUIRCLE_CORNER - inset)
+        draw.line(outline + outline[:1], fill=255, width=1)
+    return rules
+
+
+def dithered_plate(rules=rounded_rules):
+    """The AI picture as ink and paper dots, GRID across, framed by `rules`."""
     picture = Image.open(SOURCE).convert("L")
     night = Image.new("L", (CROP[2] - CROP[0], CROP[3] - CROP[1]), 0)
     night.paste(picture, (-CROP[0], -CROP[1]))
@@ -190,13 +243,7 @@ def dithered_plate():
             dots[sx, sy + d] = PAPER
 
     # The rules run unbroken: paper over the night, ink across the crag.
-    rules = Image.new("L", (GRID, GRID), 0)
-    draw = ImageDraw.Draw(rules)
-    radius = round(GRID * CORNER)
-    for inset in RULES:
-        draw.rounded_rectangle((inset, inset, GRID - 1 - inset, GRID - 1 - inset),
-                               radius=radius - inset, outline=255, width=1)
-    marks = rules.load()
+    marks = rules().load()
     for y in range(GRID):
         for x in range(GRID):
             if marks[x, y]:
@@ -272,6 +319,32 @@ def write_icns(plate):
         subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(ICNS)], check=True)
 
 
+def write_icon_composer():
+    """The macOS 26 icon: the ink is the file's fill and the paper dots the
+    one layer over it, with Liquid Glass off so the dots stay crisp. Edits
+    made in Icon Composer are lost on the next run."""
+    plate = dithered_plate(squircle_rules)
+    plate.putalpha(plate.convert("L").point(lambda v: 255 if v > 128 else 0))
+    if ICON.exists():
+        shutil.rmtree(ICON)
+    (ICON / "Assets").mkdir(parents=True)
+    plate.resize((ICON_CANVAS, ICON_CANVAS), Image.NEAREST).save(ICON / "Assets" / "plate.png")
+    ink = ",".join(f"{c / 255:.5f}" for c in INK_RGB)
+    document = {
+        "fill": {"solid": f"srgb:{ink},1.00000"},
+        "groups": [{
+            "layers": [{"glass": False, "image-name": "plate.png", "name": "plate"}],
+            "shadow": {"kind": "none", "opacity": 0.5},
+            "specular": False,
+            "translucency": {"enabled": False, "value": 0.5},
+        }],
+        "supported-platforms": {"squares": ["macOS"]},
+    }
+    # Icon Composer's own layout, so a file saved there diffs cleanly.
+    text = json.dumps(document, indent=2, separators=(",", " : "), sort_keys=True)
+    (ICON / "icon.json").write_text(text + "\n")
+
+
 def write_ico(plate):
     """A Vista-style .ico, one PNG per size; Windows picks one per DPI."""
     sizes = (16, 24, 32, 48, 64, 256)
@@ -310,12 +383,41 @@ def write_store(plate):
     sheet.save(STORE / "icon_sizes_preview.png")
 
 
+def write_android():
+    """The Android adaptive icon's layers, one PNG per density. The launcher
+    masks the icon to its own shape, so the plate has no rules; it fills the
+    72 dp viewport in the middle of the 108 dp layer, and the ink
+    background (res/values/colors.xml) shows past it when the launcher
+    shifts the layer. The monochrome layer is the paper dots alone, which
+    Android 13 tints for themed icons."""
+    plate = dithered_plate(lambda: Image.new("L", (GRID, GRID), 0))
+    for name, density in ANDROID_DENSITIES.items():
+        layer, view = round(108 * density), round(72 * density)
+        whole = max(1, view // GRID) * GRID
+        art = plate.resize((whole, whole), Image.NEAREST)
+        if whole != view:
+            art = art.resize((view, view), Image.LANCZOS)
+        inset = (layer - view) // 2
+        foreground = Image.new("RGBA", (layer, layer), CLEAR)
+        foreground.paste(art, (inset, inset))
+        lit = art.convert("L").point(lambda v: 255 if v > 128 else 0)
+        monochrome = Image.new("RGBA", (layer, layer), CLEAR)
+        monochrome.paste(Image.new("RGBA", (view, view), (255, 255, 255, 255)),
+                         (inset, inset), lit)
+        folder = ANDROID_RES / f"mipmap-{name}"
+        folder.mkdir(parents=True, exist_ok=True)
+        foreground.save(folder / "ic_launcher_foreground.png", optimize=True)
+        monochrome.save(folder / "ic_launcher_monochrome.png", optimize=True)
+
+
 def main():
     plate = dithered_plate()
     write_icns(plate)
+    write_icon_composer()
     write_ico(plate)
     write_store(plate)
-    for path in (ICNS, ICO, STORE):
+    write_android()
+    for path in (ICNS, ICON, ICO, STORE, ANDROID_RES):
         print(path.relative_to(ROOT))
 
 

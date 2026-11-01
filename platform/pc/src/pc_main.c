@@ -1,9 +1,11 @@
-/* Frostline Hold on a PC: macOS, Windows, Linux and the browser.
+/* Frostline Hold on a PC: macOS, Windows, Linux and the browser; and on
+ * Android, through the same shell.
  *
  * The game is the same module the device and the simulator run; the Engine
  * renders it into a 480x480 RGB565 frame. This shell owns everything around
- * that frame: the window, the scaling, the mouse and touch, the clock, the
- * player's data folder, and Steam when the build links it.
+ * that frame: the window, the scaling (letterboxed, or framed by pc_frame.c),
+ * the mouse and touch, the clock, the player's data folder, and Steam when
+ * the build links it.
  *
  * SDL's callback entry points drive the loop, so the browser (which owns its
  * own frame loop) and the desktop share one code path.
@@ -19,15 +21,17 @@
 #include "raylib_lite_host_game.h"
 #include "raylib_lite_game_audio.h"
 #include "../../../components/app_game_runtime/include/frostline_record.h"
+#include "pc_frame.h"
 #include "pc_steam.h"
 
 #define PC_TITLE "Frostline Hold"
 #define PC_ORG "hkgood"
 #define PC_SAVE_FILE "frostline_record.bin"
-/* The letterbox around the square board: the game's ink, FL_INK. */
+/* The letterbox around the square board: the game's ink, FL_INK, as it
+ * shows after RGB565 so the bars meet the board without a seam. */
 #define PC_INK_R 0x31
-#define PC_INK_G 0x2F
-#define PC_INK_B 0x28
+#define PC_INK_G 0x2C
+#define PC_INK_B 0x29
 /* After a stall (a dragged window, a breakpoint) the game resumes rather
  * than racing through the missed ticks. */
 #define PC_MAX_CATCH_UP_TICKS 4
@@ -46,6 +50,7 @@ typedef struct {
     Uint64 last_ns;
     Uint64 lag_ns;
     bool vsync;
+    bool framed;
     bool pointer_down;
     bool minimized;
     const char *smoke_path;
@@ -54,11 +59,13 @@ typedef struct {
 
 /* Where the packed assets are: FROSTLINE_ASSETS when set (development),
  * else the assets folder SDL reports beside the program (Resources inside a
- * macOS bundle). */
+ * macOS bundle). On Android a relative path names a folder inside the APK. */
 static void find_asset_root(char *out, size_t capacity)
 {
 #if defined(SDL_PLATFORM_EMSCRIPTEN)
     snprintf(out, capacity, "/assets");
+#elif defined(SDL_PLATFORM_ANDROID)
+    snprintf(out, capacity, "assets");
 #else
     const char *override = SDL_getenv("FROSTLINE_ASSETS");
     if (override && *override) {
@@ -185,6 +192,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 #if defined(SDL_PLATFORM_EMSCRIPTEN)
     /* The canvas fills the page (itch's frame, or its fullscreen view). */
     flags |= SDL_WINDOW_FILL_DOCUMENT;
+#elif defined(SDL_PLATFORM_ANDROID)
+    /* Held upright in one hand, the system bars hidden. */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait");
+    flags |= SDL_WINDOW_FULLSCREEN;
 #endif
     if (smoke_path) {
         flags |= SDL_WINDOW_HIDDEN;
@@ -196,8 +207,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
     SDL_SetWindowMinimumSize(app->window, app->width, app->height);
     app->vsync = SDL_SetRenderVSync(app->renderer, 1);
-    SDL_SetRenderLogicalPresentation(app->renderer, app->width, app->height,
-                                     SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    char assets[1024];
+    find_asset_root(assets, sizeof(assets));
+    app->framed = pc_frame_init(app->renderer, assets, app->width, app->height);
+    if (!app->framed) {
+        SDL_SetRenderLogicalPresentation(app->renderer, app->width, app->height,
+                                         SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    }
     app->texture = SDL_CreateTexture(app->renderer, SDL_PIXELFORMAT_RGB565,
                                      SDL_TEXTUREACCESS_STREAMING, app->width, app->height);
     app->pixels = SDL_calloc((size_t)app->width * (size_t)app->height, sizeof(uint16_t));
@@ -208,8 +224,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     /* Crisp at any scale, without the uneven pixels of plain nearest. */
     SDL_SetTextureScaleMode(app->texture, SDL_SCALEMODE_PIXELART);
 
-    char assets[1024];
-    find_asset_root(assets, sizeof(assets));
     set_save_path();
     app->game = raylib_lite_host_game_create_v1(assets);
     if (!app->game) {
@@ -259,13 +273,21 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         SDL_ConvertEventToRenderCoordinates(app->renderer, event);
         if (event->type == SDL_EVENT_MOUSE_MOTION) {
             if (app->pointer_down) {
-                send_pointer(app, event->motion.x, event->motion.y, true);
+                float x = event->motion.x;
+                float y = event->motion.y;
+                if (app->framed) {
+                    pc_frame_to_board(&x, &y);
+                }
+                send_pointer(app, x, y, true);
             }
         } else if (event->button.button == SDL_BUTTON_LEFT) {
             float x = event->button.x;
             float y = event->button.y;
+            if (app->framed) {
+                pc_frame_to_board(&x, &y);
+            }
             if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-                /* A press on the letterbox is not a press on the board. */
+                /* A press on the letterbox or the frame is not a press on the board. */
                 if (inside_board(app, x, y)) {
                     app->pointer_down = true;
                     send_pointer(app, x, y, true);
@@ -321,7 +343,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     SDL_SetRenderDrawColor(app->renderer, PC_INK_R, PC_INK_G, PC_INK_B, 255);
     SDL_RenderClear(app->renderer);
-    SDL_RenderTexture(app->renderer, app->texture, NULL, NULL);
+    if (app->framed) {
+        pc_frame_render(app->renderer, app->window, app->texture);
+    } else {
+        SDL_RenderTexture(app->renderer, app->texture, NULL, NULL);
+    }
     SDL_RenderPresent(app->renderer);
 
     /* Without vsync the present returns at once; sleep to the next tick. */

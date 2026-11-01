@@ -1,12 +1,13 @@
 /* The asset store of the PC build: the packed files sit in one folder (the
  * app bundle's Resources on macOS, beside the .exe on Windows, the preloaded
- * /assets folder on the web). Each file is read once, on first use, and kept
+ * /assets folder on the web, assets/ inside the APK on Android). Each file is read once, on first use, and kept
  * for the life of the process: the game holds views into it.
  *
  * SPDX-License-Identifier: LicenseRef-Frostline-Hold-Proprietary */
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+#include <SDL3/SDL.h>
 
 #include "raylib_lite_assets.h"
 #include "host_asset_runtime.h"
@@ -63,29 +64,17 @@ static void view_of(const pc_asset_t *asset, raylib_lite_asset_view_t *out)
     };
 }
 
-/* Reads the whole file into a fresh buffer; NULL when it cannot. */
+/* Reads the whole file into a fresh buffer; NULL when it cannot or it is
+ * empty. SDL's reader also opens the files packed inside an Android APK. */
 static uint8_t *read_file(const char *path, size_t *out_size)
 {
-    FILE *file = fopen(path, "rb");
-    if (!file) {
+    size_t size = 0;
+    uint8_t *data = SDL_LoadFile(path, &size);
+    if (data && size == 0) {
+        SDL_free(data);
         return NULL;
     }
-    uint8_t *data = NULL;
-    long length = -1;
-    if (fseek(file, 0, SEEK_END) == 0) {
-        length = ftell(file);
-    }
-    if (length > 0 && fseek(file, 0, SEEK_SET) == 0) {
-        data = malloc((size_t)length);
-        if (data && fread(data, 1, (size_t)length, file) != (size_t)length) {
-            free(data);
-            data = NULL;
-        }
-    }
-    fclose(file);
-    if (data) {
-        *out_size = (size_t)length;
-    }
+    *out_size = size;
     return data;
 }
 

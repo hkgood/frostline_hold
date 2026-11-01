@@ -1,4 +1,5 @@
-# Frostline Hold for macOS, Windows, Linux and the web (Emscripten).
+# Frostline Hold for macOS, Windows, Linux and the web (Emscripten), and the
+# native library of the Android app (platform/android builds it through here).
 #
 #   cmake -S platform/pc -B build-pc && cmake --build build-pc
 #
@@ -18,6 +19,14 @@ option(FROSTLINE_STEAM "Link Steamworks (needs STEAMWORKS_SDK and FROSTLINE_STEA
 set(STEAMWORKS_SDK "" CACHE PATH "The unpacked Steamworks SDK folder (the one holding public/ and redistributable_bin/)")
 set(FROSTLINE_STEAM_APPID "" CACHE STRING "The game's Steam App ID")
 set(FROSTLINE_BUNDLE_ID "com.hkgood.frostlinehold" CACHE STRING "macOS bundle identifier")
+# The engraved border and night backdrop round the board (src/pc_frame.c),
+# made for tall phone screens; on a desktop it previews the Android look.
+if(ANDROID)
+    set(FROSTLINE_FRAME_DEFAULT ON)
+else()
+    set(FROSTLINE_FRAME_DEFAULT OFF)
+endif()
+option(FROSTLINE_FRAME "Frame the board for tall screens (the Android look)" ${FROSTLINE_FRAME_DEFAULT})
 
 get_filename_component(GAME_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
@@ -91,6 +100,11 @@ if(FROSTLINE_STEAM)
 else()
     list(APPEND SHELL_SOURCES src/pc_steam_stub.c)
 endif()
+if(FROSTLINE_FRAME)
+    list(APPEND SHELL_SOURCES src/pc_frame.c)
+else()
+    list(APPEND SHELL_SOURCES src/pc_frame_stub.c)
+endif()
 
 # -------------------------------------------------------------------- assets
 # Only the files the game opens: the atlases and the sounds.
@@ -109,6 +123,21 @@ foreach(asset ${GAME_ASSETS})
         DEPENDS "${asset}" VERBATIM)
     list(APPEND STAGED_ASSETS "${ASSET_STAGE}/${name}")
 endforeach()
+# The frame's art (assets_src/artgen/generate_frame.py), in assets/frame.
+set(FRAME_ASSETS "")
+if(FROSTLINE_FRAME)
+    file(GLOB FRAME_ASSETS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/frame/*.png")
+    if(NOT FRAME_ASSETS)
+        message(FATAL_ERROR "no frame art in platform/pc/frame: run assets_src/artgen/generate_frame.py")
+    endif()
+    foreach(asset ${FRAME_ASSETS})
+        get_filename_component(name "${asset}" NAME)
+        add_custom_command(OUTPUT "${ASSET_STAGE}/frame/${name}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${asset}" "${ASSET_STAGE}/frame/${name}"
+            DEPENDS "${asset}" VERBATIM)
+        list(APPEND STAGED_ASSETS "${ASSET_STAGE}/frame/${name}")
+    endforeach()
+endif()
 add_custom_target(frostline_assets DEPENDS ${STAGED_ASSETS})
 
 # -------------------------------------------------------------------- target
@@ -116,8 +145,14 @@ set(TARGET_NAME "Frostline Hold")
 if(EMSCRIPTEN)
     set(TARGET_NAME index)
 endif()
-add_executable(frostline WIN32 MACOSX_BUNDLE
-    ${SHELL_SOURCES} ${GAME_SOURCES} ${ENGINE_SOURCES})
+if(ANDROID)
+    # SDLActivity loads libmain.so and calls its SDL_main.
+    add_library(frostline SHARED ${SHELL_SOURCES} ${GAME_SOURCES} ${ENGINE_SOURCES})
+    set(TARGET_NAME main)
+else()
+    add_executable(frostline WIN32 MACOSX_BUNDLE
+        ${SHELL_SOURCES} ${GAME_SOURCES} ${ENGINE_SOURCES})
+endif()
 set_target_properties(frostline PROPERTIES OUTPUT_NAME "${TARGET_NAME}")
 add_dependencies(frostline frostline_assets)
 
@@ -144,6 +179,9 @@ endif()
 target_link_libraries(frostline PRIVATE SDL3::SDL3-static)
 if(NOT MSVC AND NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(frostline PRIVATE m)
+endif()
+if(ANDROID)
+    target_link_libraries(frostline PRIVATE android log)
 endif()
 
 # --------------------------------------------------------------------- Steam
@@ -192,16 +230,49 @@ if(EMSCRIPTEN)
         -lidbfs.js)
     set_target_properties(frostline PROPERTIES SUFFIX ".html"
         LINK_DEPENDS "${WEB_DIR}/frostline_pre.js;${WEB_DIR}/shell.html;${STAGED_ASSETS}")
+elseif(ANDROID)
+    # Gradle packs the assets into the APK (platform/android/app/build.gradle.kts).
 elseif(APPLE)
     # The assets go into the bundle's Resources, where SDL_GetBasePath points.
     set_source_files_properties(${GAME_ASSETS} PROPERTIES
         MACOSX_PACKAGE_LOCATION Resources/assets)
     target_sources(frostline PRIVATE ${GAME_ASSETS})
+    if(FRAME_ASSETS)
+        set_source_files_properties(${FRAME_ASSETS} PROPERTIES
+            MACOSX_PACKAGE_LOCATION Resources/assets/frame)
+        target_sources(frostline PRIVATE ${FRAME_ASSETS})
+    endif()
     set(ICON "${CMAKE_CURRENT_LIST_DIR}/mac/FrostlineHold.icns")
     if(EXISTS "${ICON}")
         set_source_files_properties("${ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
         target_sources(frostline PRIVATE "${ICON}")
         set(MACOSX_BUNDLE_ICON_FILE FrostlineHold.icns)
+    endif()
+    # macOS 26 takes the Icon Composer file, compiled into Assets.car, over
+    # the .icns; only actool 26 or later reads it. Its own .icns stays out:
+    # the hand-drawn small sizes are better.
+    set(ICON_COMPOSER "${CMAKE_CURRENT_LIST_DIR}/mac/FrostlineHold.icon")
+    execute_process(COMMAND xcrun actool --version
+        OUTPUT_VARIABLE ACTOOL_VERSION RESULT_VARIABLE ACTOOL_FAILED ERROR_QUIET)
+    string(REGEX MATCH "short-bundle-version</key>[ \t\r\n]*<string>([0-9]+)" ACTOOL_MATCH "${ACTOOL_VERSION}")
+    if(ACTOOL_FAILED OR NOT ACTOOL_MATCH OR CMAKE_MATCH_1 LESS 26)
+        message(WARNING "actool 26 or later not found: macOS 26 will show the .icns icon")
+    elseif(NOT EXISTS "${ICON_COMPOSER}/icon.json")
+        message(FATAL_ERROR "no ${ICON_COMPOSER}: run assets_src/artgen/generate_icon.py")
+    else()
+        set(ICON_OUT "${CMAKE_BINARY_DIR}/icon")
+        file(GLOB_RECURSE ICON_COMPOSER_FILES CONFIGURE_DEPENDS "${ICON_COMPOSER}/*")
+        add_custom_command(OUTPUT "${ICON_OUT}/Assets.car"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${ICON_OUT}"
+            COMMAND xcrun actool "${ICON_COMPOSER}" --compile "${ICON_OUT}"
+                --platform macosx --minimum-deployment-target 11.0
+                --app-icon FrostlineHold --output-partial-info-plist "${ICON_OUT}/partial.plist"
+                --errors --warnings --output-format human-readable-text
+            DEPENDS ${ICON_COMPOSER_FILES} VERBATIM)
+        set_source_files_properties("${ICON_OUT}/Assets.car" PROPERTIES
+            GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+        target_sources(frostline PRIVATE "${ICON_OUT}/Assets.car")
+        set(MACOSX_BUNDLE_ICON_NAME FrostlineHold)
     endif()
     set_target_properties(frostline PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/mac/Info.plist.in"

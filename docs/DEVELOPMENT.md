@@ -125,6 +125,15 @@ and exits, which `.github/workflows/pc-build.yml` uses on real Windows and
 macOS machines (run it by hand or push a `v*` tag). The workflow pins the
 Engine revision in `ENGINE_SHA`; move it with the submodule.
 
+A `v*` tag also attaches the Windows and unsigned macOS zips to its GitHub
+Release. The device bundle needs the ESP-Mosaic workspace, so upload it by
+hand after `iris system-update` has built it:
+
+```sh
+cp build/frostline_hold-system-update.irisfw /tmp/frostline-hold-0.1.0-mosaico.irisfw
+gh release upload v0.1.0 /tmp/frostline-hold-0.1.0-mosaico.irisfw --clobber
+```
+
 The record lives in the player's data folder: `~/Library/Application
 Support/hkgood/Frostline Hold/` on macOS, `%APPDATA%\hkgood\Frostline Hold\` on
 Windows, IndexedDB in the browser (`web/frostline_pre.js`). F11, Alt+Enter or
@@ -136,6 +145,21 @@ draws 16, 24 and 32 pixels by hand (the `SMALL` maps). It writes
 `mac/FrostlineHold.icns`, `windows/frostline.ico` (linked through
 `windows/frostline.rc`) and the store images in `platform/pc/icon/`
 (1024 master, Steam community 184×184, itch 512×512).
+
+macOS 26 and later show `mac/FrostlineHold.icon` instead, an Icon Composer
+file written by the same script: the ink as its fill, the paper dots as one
+layer with Liquid Glass off, the frame following the system's superelliptic
+corners. The build compiles it into `Assets.car` with `actool` (Xcode 26 or
+later; with an older one the build warns and ships the `.icns` alone). Open
+it in Icon Composer to preview; edits made there are lost when the script
+runs again.
+
+The itch.io page art comes from `python3 artgen/generate_itch_page.py` (run
+in `assets_src`) and lands in `platform/pc/itch/`: `banner.png` (shown 960
+wide), `background.png` (No repeat, Center, Fixed) and `embed_bg.png`, which
+fits a 720×720 embed. The embed backdrop is a captured title frame, so run
+`tools/promo/capture.py --lang en` first. The page's background colour is
+`#312C29`, the ink the game shows.
 
 Signing the Mac app takes a "Developer ID Application" certificate (created
 by the team's Account Holder in Xcode > Settings > Accounts) and a notarytool
