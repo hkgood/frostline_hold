@@ -90,9 +90,11 @@ jobs:
           name: frostline-hold-mac-unsigned
           path: dist/mac-itch/*.zip
 
-  # On a version tag, attaches the Windows and macOS packages to the GitHub
-  # Release (created when missing). The device bundle needs the ESP-Mosaic
-  # workspace, so it is uploaded by hand: see docs/DEVELOPMENT.md.
+  # On a version tag, attaches the Windows package to the GitHub Release
+  # (created when missing), unless one was uploaded by hand already. The
+  # macOS package has to be signed and notarized and the device bundle needs
+  # the ESP-Mosaic workspace, so both are uploaded by hand: see
+  # docs/DEVELOPMENT.md.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [windows-smoke, mac]
@@ -108,16 +110,15 @@ jobs:
         with:
           name: frostline-hold-windows
           path: windows
-      - uses: actions/download-artifact@v4
-        with:
-          name: frostline-hold-mac-unsigned
-          path: mac
       - name: Upload to the release
         run: |
           version="${TAG#v}"
-          mkdir out
-          mv windows/*.zip "out/frostline-hold-$version-windows.zip"
-          mv mac/*.zip "out/frostline-hold-$version-macos.zip"
+          zip="frostline-hold-$version-windows.zip"
+          mv windows/*.zip "$zip"
           gh release view "$TAG" >/dev/null 2>&1 ||
             gh release create "$TAG" --verify-tag --title "Frostline Hold $version" --generate-notes
-          gh release upload "$TAG" out/*.zip --clobber
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$zip"; then
+            echo "$zip is attached already"
+          else
+            gh release upload "$TAG" "$zip"
+          fi

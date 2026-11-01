@@ -1,0 +1,44 @@
+# Publishes site/ (the game's page, its support section and the privacy
+# policy the stores link to) to GitHub Pages, with the README's GIFs and the
+# itch.io banner copied in rather than kept twice.
+name: pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/media/**"
+      - "platform/pc/itch/banner.png"
+      - "platform/pc/icon/itch_square_512.png"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p site/media
+          cp docs/media/*.gif site/media/
+          cp platform/pc/itch/banner.png site/media/banner.png
+          cp platform/pc/icon/itch_square_512.png site/media/icon.png
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -125,13 +125,16 @@ and exits, which `.github/workflows/pc-build.yml` uses on real Windows and
 macOS machines (run it by hand or push a `v*` tag). The workflow pins the
 Engine revision in `ENGINE_SHA`; move it with the submodule.
 
-A `v*` tag also attaches the Windows and unsigned macOS zips to its GitHub
-Release. The device bundle needs the ESP-Mosaic workspace, so upload it by
-hand after `iris system-update` has built it:
+A `v*` tag also creates its GitHub Release and attaches the Windows zip,
+unless one was uploaded by hand first. The other two are uploaded by hand:
+the macOS zip once `package_mac.sh` has signed and notarized it, the device
+bundle after `iris system-update` has built it (a release is named
+`frostline-hold-<version>-{windows,macos}.zip` and `-mosaico.irisfw`):
 
 ```sh
-cp build/frostline_hold-system-update.irisfw /tmp/frostline-hold-0.1.0-mosaico.irisfw
-gh release upload v0.1.0 /tmp/frostline-hold-0.1.0-mosaico.irisfw --clobber
+cp dist/mac-itch/frostline-hold-0.1.1-mac-itch.zip /tmp/frostline-hold-0.1.1-macos.zip
+cp build/frostline_hold-system-update.irisfw /tmp/frostline-hold-0.1.1-mosaico.irisfw
+gh release upload v0.1.1 /tmp/frostline-hold-0.1.1-macos.zip /tmp/frostline-hold-0.1.1-mosaico.irisfw --clobber
 ```
 
 The record lives in the player's data folder: `~/Library/Application
@@ -161,9 +164,30 @@ fits a 720×720 embed. The embed backdrop is a captured title frame, so run
 `tools/promo/capture.py --lang en` first. The page's background colour is
 `#312C29`, the ink the game shows.
 
+The Mac App Store and Google Play screenshots and Play's feature graphic
+come from `python3 artgen/generate_store_art.py`, which frames captured
+shots (both languages, so run `capture.py` with and without `--lang en`) and
+writes them to `dist/store/`. `site/` is the game's page, support section and
+privacy policy, published to <https://hkgood.github.io/frostline_hold/> by
+`.github/workflows/pages.yml`. The store steps and listing text are in
+[STORE_RELEASE.md](STORE_RELEASE.md).
+
 Signing the Mac app takes a "Developer ID Application" certificate (created
 by the team's Account Holder in Xcode > Settings > Accounts) and a notarytool
 profile stored once with `xcrun notarytool store-credentials frostline`.
+
+The Mac App Store build is `package_mac.sh --mas`: sandboxed
+(`mac/FrostlineHold.entitlements`), without Steam, signed with an "Apple
+Distribution" certificate and packed into a `.pkg` signed with a "Mac
+Installer Distribution" one, for Transporter to upload. It embeds the app's
+Mac App Store provisioning profile, kept at
+`~/.frostline/FrostlineHold_MAS.provisionprofile` (`FROSTLINE_MAS_PROFILE`).
+In the sandbox the record moves to
+`~/Library/Containers/com.hkgood.frostlinehold/Data/Library/Application Support/hkgood/Frostline Hold/`
+with no code change; a store copy does not see a record from another build.
+Every upload needs a larger `CFBundleVersion`: the script stamps the UTC time
+(`YYDDDHHMM`) unless `FROSTLINE_BUILD_NUMBER` is set, and the other builds
+keep the version there.
 
 Steam builds add `--steam` to the package scripts with `STEAMWORKS_SDK` (the
 unpacked SDK, 1.58 or later) and `FROSTLINE_STEAM_APPID` set;

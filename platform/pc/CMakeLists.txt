@@ -7,7 +7,7 @@
 # so the two never drift. The Engine sources come from the ESP-Mosaic
 # checkout, found the same way as the firmware build finds it.
 cmake_minimum_required(VERSION 3.24)
-project(frostline_hold_pc VERSION 0.1.0 LANGUAGES C)
+project(frostline_hold_pc VERSION 0.1.1 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -19,6 +19,9 @@ option(FROSTLINE_STEAM "Link Steamworks (needs STEAMWORKS_SDK and FROSTLINE_STEA
 set(STEAMWORKS_SDK "" CACHE PATH "The unpacked Steamworks SDK folder (the one holding public/ and redistributable_bin/)")
 set(FROSTLINE_STEAM_APPID "" CACHE STRING "The game's Steam App ID")
 set(FROSTLINE_BUNDLE_ID "com.hkgood.frostlinehold" CACHE STRING "macOS bundle identifier")
+# The App Store wants a larger CFBundleVersion on every upload, even of the
+# same version; package_mac.sh --mas passes one. Empty: the version.
+set(FROSTLINE_BUILD_NUMBER "" CACHE STRING "macOS bundle build number (CFBundleVersion)")
 # The engraved border and night backdrop round the board (src/pc_frame.c),
 # made for tall phone screens; on a desktop it previews the Android look.
 if(ANDROID)
@@ -274,11 +277,16 @@ elseif(APPLE)
         target_sources(frostline PRIVATE "${ICON_OUT}/Assets.car")
         set(MACOSX_BUNDLE_ICON_NAME FrostlineHold)
     endif()
+    if(FROSTLINE_BUILD_NUMBER)
+        set(BUNDLE_BUILD_NUMBER "${FROSTLINE_BUILD_NUMBER}")
+    else()
+        set(BUNDLE_BUILD_NUMBER "${PROJECT_VERSION}")
+    endif()
     set_target_properties(frostline PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/mac/Info.plist.in"
         MACOSX_BUNDLE_GUI_IDENTIFIER "${FROSTLINE_BUNDLE_ID}"
         MACOSX_BUNDLE_BUNDLE_NAME "Frostline Hold"
-        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${BUNDLE_BUILD_NUMBER}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 else()
     # Windows and Linux: the assets folder beside the program.
