@@ -48,7 +48,7 @@ App Store Connect → App → "+" → 新建 App：
 | 字段 | 填写 |
 | --- | --- |
 | 平台 | macOS |
-| 名称 | `Frostline Hold`（简体中文本地化：`霜线要塞`） |
+| 名称 | `Frostline Hold: Winter TD`（`Frostline Hold` 已被占用；简体中文本地化：`霜线要塞`） |
 | 主要语言 | 英语（美国），再添加"简体中文"本地化 |
 | 套装 ID | `com.hkgood.frostlinehold` |
 | SKU | `frostlinehold-mac` |
@@ -162,8 +162,8 @@ platform/pc/scripts/package_android.sh             # → dist/android/*.aab
 
 | 商店 | English | 简体中文 |
 | --- | --- | --- |
-| App Store 名称（≤30） | Frostline Hold | 霜线要塞 |
-| App Store 副标题（≤30） | A Winter Tower Defense | 双色版画风格的凛冬塔防 |
+| App Store 名称（≤30） | Frostline Hold: Winter TD | 霜线要塞 |
+| App Store 副标题（≤30） | Hold the Frozen Fortress | 双色版画风格的凛冬塔防 |
 | Play 应用名称（≤30） | Frostline Hold | 霜线要塞 |
 
 ### App Store 宣传文本（≤170）
